@@ -1,19 +1,14 @@
 require 'rubygems'; require 'ruby-debug'
 
-module Hipe; end
-
-module Hipe::Resizum
-  module InterfaceReflector
-    class << self
-      def extended cls
-        cls.extend ClassMethods
-        cls.send(:include, InstanceMethods)
-      end
-    end
-  end
-end
+module Hipe; module Resizum; end  end
 
 module Hipe::Resizum::InterfaceReflector
+  class << self
+    def extended cls
+      cls.extend ClassMethods
+      cls.send(:include, InstanceMethods)
+    end
+  end
   class GenericContext < Hash
     def initialize
       @out = $stdout
@@ -21,7 +16,6 @@ module Hipe::Resizum::InterfaceReflector
     end
     attr_reader :out, :err
   end
-
   module InstanceMethods
     def build_cli_option_parser
       require 'optparse'
@@ -44,6 +38,28 @@ module Hipe::Resizum::InterfaceReflector
       send("on_#{parameter.intern}", *args) or
         handle_failed_option(parameter, value)
     end
+    # file utils convenience smell begin
+    class << self
+      def file_utils_adapter
+        const_defined?(:FileUtilsAdapter) ? const_get(:FileUtilsAdapter) :
+          const_set(:FileUtilsAdapter, begin
+            require 'fileutils'
+            c = Class.new
+            c.class_eval do
+              include FileUtils
+              def initialize outs
+                @fileutils_output = outs
+              end
+              ::FileUtils::METHODS.each { |m| public m }
+            end
+            c
+          end)
+      end
+    end
+    def file_utils
+      @file_utils ||= InstanceMethods.file_utils_adapter.new(@c.err)
+    end
+    # file utils convenince smell end
     def handle_failed_option param, value
       @options_ok = false
     end
@@ -58,9 +74,6 @@ module Hipe::Resizum::InterfaceReflector
       @interface ||= build_interface
     end
   end
-end
-
-module Hipe::Resizum::InterfaceReflector
   class ParameterDefinitionSet < Array
     def initialize
       @parsed = false
@@ -75,9 +88,6 @@ module Hipe::Resizum::InterfaceReflector
       @parsed = true
     end
   end
-end
-
-module Hipe::Resizum::InterfaceReflector
   class Parameter
     def initialize intern
       @intern = intern
@@ -94,9 +104,15 @@ module Hipe::Resizum::InterfaceReflector
     def required!           ;   @required = true                           end
     def optional?           ;  !required?                                  end
     def argument?           ;  !option?                                    end
-
+    def default= foo
+      @has_default = true
+      @default = foo
+      (class << self; self end).send(:attr_reader, :default)
+    end
     attr_reader   :glob
     alias_method  :glob?, :glob
+    attr_reader   :has_default
+    alias_method  :has_default?, :has_default
     attr_reader   :intern
     attr_accessor :cli_definition_array, :cli_syntax_label, :cli_label
     attr_reader   :argument
@@ -106,9 +122,6 @@ module Hipe::Resizum::InterfaceReflector
     alias_method  :required?, :required
     attr_accessor :desc
   end
-end
-
-module Hipe::Resizum::InterfaceReflector
   class RequestParser
     # an adapter to make it look like an option parser, but it's more
     def initialize
@@ -146,8 +159,26 @@ module Hipe::Resizum::InterfaceReflector
           md[1].nil? or p.noable!
           md[3].nil? or p.argument_optional!
           md[4].nil? or p.argument_required!
+          if @arr.last.kind_of?(Hash)
+            h = @arr.pop
+            h.key?(:default) and go_default(p, h.delete(:default))
+            h.any? and fail("unsupported opts: #{h.keys.join(', ')}")
+          end
           p.cli_definition_array = @arr
         end
+      end
+      def go_default p, default
+        p.default = default
+        a = b = ''
+        if @arr.last.kind_of?(String) && @arr.last[0,1] != '-'
+          if @arr.last.length > 0
+            @arr.last.concat(' ')
+            a = '('; b = ')'
+          end
+        else
+          @arr.push ''
+        end
+        @arr.last.concat "#{a}default: #{default.inspect}#{b}"
       end
     end
     class UnparsedArgumentDefinition < UnparsedParameterDefinition
@@ -179,11 +210,14 @@ module Hipe::Resizum::InterfaceReflector
       end
     end
   end
-end
-
-module Hipe::Resizum::InterfaceReflector
   class Fatal < ::RuntimeError; end
+  module Colorizer
+    Codes = {:bold=>1,:dark_red=>31,:green=>32,:yellow=>33,:blue=>34,
+      :purple=>35,:cyan=>36,:white=>37,:red=>38}
+    def color(s, *a); "\e[#{a.map{|x|Codes[x]}.compact*';'}m#{s}\e[0m" end
+  end
   module CliInstanceMethods
+    include Colorizer
     def run argv
       @argv = argv
       @c = build_context
@@ -205,12 +239,9 @@ module Hipe::Resizum::InterfaceReflector
     attr_accessor :c
     alias_method :execution_context, :c
   protected
-    Codes = {:bold=>1,:dark_red=>31,:green=>32,:yellow=>33,:blue=>34,
-      :purple=>35,:cyan=>36,:white=>37,:red=>38}
-    def color(s, *a); "\e[#{a.map{|x|Codes[x]}.compact*';'}m#{s}\e[0m" end
-    def em(s); style(s, :em) end
     Styles = { :error => [:bold, :red], :em => [:bold, :green] }
     def style(s, style); color(s, *Styles[style]) end
+    def em(s); style(s, :em) end
     def error msg
       @c.err.puts msg
       false
@@ -230,6 +261,11 @@ module Hipe::Resizum::InterfaceReflector
         cli_option_parser.parse!(@argv)
       rescue OptionParser::ParseError => e
         return error(e.message)
+      end
+      self.class.interface.parameters.select do |p|
+        p.has_default? && p.cli? && ! @c.key?(p.intern)
+      end.each do |p|
+        @c[p.intern] = p.default
       end
       @options_ok
     end
