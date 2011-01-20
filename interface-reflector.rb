@@ -1,8 +1,6 @@
-require 'rubygems'; require 'ruby-debug'
+module Hipe; end
 
-module Hipe; module Resizum; end  end
-
-module Hipe::Resizum::InterfaceReflector
+module Hipe::InterfaceReflector
   class << self
     def extended cls
       cls.extend ClassMethods

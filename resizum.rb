@@ -6,6 +6,7 @@ require File.dirname(__FILE__)+'/interface-reflector'
 module Hipe; end
 module Hipe::Resizum
   class Cli
+    InterfaceReflector = ::Hipe::InterfaceReflector
     extend InterfaceReflector, InterfaceReflector::Colorizer
     include InterfaceReflector::CliInstanceMethods
     def self.g x
