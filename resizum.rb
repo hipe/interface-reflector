@@ -82,7 +82,7 @@ module Hipe::Resizum
         @_path = move(@_path) or return
       end
       begin
-        File.directory?(@_outdir) or no_outdir || return
+        File.directory?(@_outdir) or no_outdir(@_outdir) || return
           # terrible hack so this doesn't break on dry run:
         img = File.exist?(@_path) ? MyImage.new(@_path) : MyImage.new(_path)
         send @action, img, @_output
