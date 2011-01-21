@@ -3,8 +3,10 @@ module Hipe; end
 module Hipe::InterfaceReflector
   class << self
     def extended cls
-      cls.extend ClassMethods
-      cls.send(:include, InstanceMethods)
+      cls.class_eval do
+        extend ClassMethods
+        include InstanceMethods
+      end
     end
   end
   class GenericContext < Hash
@@ -17,10 +19,10 @@ module Hipe::InterfaceReflector
   module InstanceMethods
     def build_cli_option_parser
       require 'optparse'
-      OptionParser.new do |o|
+      ::OptionParser.new do |o|
         o.banner = usage
-        a = self.class.interface.parameters.select{ |p| p.cli? and p.option? }
-        if a.any?
+        desc? and render_desc(o)
+        if (a = interface.parameters.select{ |p| p.cli? and p.option? }).any?
           o.separator(em("options:"))
           a.each do |p|
             o.on( * p.cli_definition_array ){ |v| dispatch_option(p, v) }
@@ -31,6 +33,7 @@ module Hipe::InterfaceReflector
     def build_context # hrm
       GenericContext.new
     end
+    def desc?; false end # other libs might redefine
     def dispatch_option parameter, value
       args = parameter.takes_argument? ? [value] : []
       send("on_#{parameter.intern}", *args) or
@@ -124,7 +127,7 @@ module Hipe::InterfaceReflector
     # an adapter to make it look like an option parser, but it's more
     def initialize
       @parameters = ParameterDefinitionSet.new
-      yield self
+      yield self if block_given?
     end
     attr_reader :parameters
     def on *a
@@ -145,18 +148,19 @@ module Hipe::InterfaceReflector
         found = @arr.detect{ |x| x.kind_of?(String) && 0 == x.index('--') }
         found or fail("Must have --long option name in: #{@arr.inspect}")
         md = %r{\A--(\[no-\])?([^=\[ ]+)
-          (?:  \[[ =](<?[^ >]+>?)?\]
-            |   [ =] (<?[^ >]+>?)?
+          (?:      \[[ =] (<?[^ >]+>?)?\]         # --help[=<subcommand>]
+            | [ ]+ \[[ =]?(<?[^ >]+>?)?\]         # --help [<subcommand>]
+            |   (?:[ =] (<?[^ >]+>?))?            # --help=<subcommand>
           )?
         \Z}x.match(found)
-        md or fail("regexp match failure with: #{@arr.inspect}")
+        md or fail("regexp match failure with #{found.inspect}")
         intern = md[2].gsub('-','_').intern
         Parameter.new(intern) do |p|
           p.cli!; p.option!
           p.cli_syntax_label = @arr.first
           md[1].nil? or p.noable!
-          md[3].nil? or p.argument_optional!
-          md[4].nil? or p.argument_required!
+          (md[3] || md[4]).nil? or p.argument_optional!
+          md[5].nil? or p.argument_required!
           if @arr.last.kind_of?(Hash)
             h = @arr.pop
             h.key?(:default) and go_default(p, h.delete(:default))
@@ -222,9 +226,7 @@ module Hipe::InterfaceReflector
       @exit_ok = nil
       @queue = []
       if ! (parse_opts and parse_args)
-        @c.err.puts usage
-        @c.err.puts invite
-        return
+        on_parse_failure or return
       end
       @queue.push default_action
       # catch(:early_exit){ while(m = @queue.pop); send(m) end }
@@ -253,23 +255,24 @@ module Hipe::InterfaceReflector
     def handle_fatal e
       @c.err.puts e.message
     end
-    def parse_opts
+    def interface_reflector_parse_opts
       @options_ok = true
       begin
         cli_option_parser.parse!(@argv)
       rescue OptionParser::ParseError => e
         return error(e.message)
       end
-      self.class.interface.parameters.select do |p|
+      interface.parameters.select do |p|
         p.has_default? && p.cli? && ! @c.key?(p.intern)
       end.each do |p|
         @c[p.intern] = p.default
       end
       @options_ok
     end
-    def parse_args
+    alias_method :parse_opts, :interface_reflector_parse_opts
+    def interface_reflector_parse_args
       unexpected = missing = glob = nil
-      ps = self.class.interface.parameters.select{|p| p.cli? and p.argument? }
+      ps = interface.parameters.select{|p| p.cli? and p.argument? }
       while @argv.any?
         if ps.any? and ps.first.glob? and glob.nil?
           glob = ps.shift
@@ -293,23 +296,43 @@ module Hipe::InterfaceReflector
         oxford_comma(missing.map(&:cli_label)))
       true
     end
+    alias_method :parse_args, :interface_reflector_parse_args
     def invite
       em("#{program_name} -h") << " for help"
     end
-    def on_help
-      args = self.class.interface.parameters.select{|p| p.cli? && p.argument?}
+    def interface_reflector_on_help
+      @c.err.puts documenting_option_parser.to_s
+      @exit_ok = true
+    end
+    alias_method :on_help, :interface_reflector_on_help
+    def on_parse_failure
+      @c.err.puts usage
+      @c.err.puts invite
+      false
+    end
+    def documenting_option_parser
+      @documenting_option_parser ||= build_documenting_option_parser
+    end
+    def interface
+      self.class.interface
+    end
+    def interface_reflector_build_documenting_option_parser
+      args = self.interface.parameters.select{|p| p.cli? && p.argument?}
       if args.empty? ; ophack = cli_option_parser else
         ophack = cli_option_parser.dup
         ophack.separator(em("arguments:"))
-        args.each do |p|
-          ophack.on('--'+p.intern.to_s, * (p.desc || []))
-          sw = ophack.instance_variable_get('@stack').last.list.last
-          sw.short[0] = p.cli_label
-          sw.long.clear
-        end
+        args.each { |p| hack_add_argument_to_optparse(ophack, p) }
       end
-      @c.err.puts ophack.to_s
-      @exit_ok = true
+      ophack
+    end
+    alias_method :build_documenting_option_parser,
+      :interface_reflector_build_documenting_option_parser
+    def hack_add_argument_to_optparse ophack, param
+      ophack.on('--'+param.intern.to_s, * (param.desc || []))
+      sw = ophack.instance_variable_get('@stack').last.list.last
+      sw.short[0] = param.cli_label
+      sw.long.clear
+      sw
     end
     def on_version
       @c.err.puts "#{program_name} #{version_string}"
@@ -322,15 +345,17 @@ module Hipe::InterfaceReflector
       [program_name,options_syntax_string,arguments_syntax_string].compact*' '
     end
     def options_syntax_string
-      s = self.class.interface.parameters.select{ |p| p.cli? && p.option? }.
+      s = interface.parameters.select{ |p| p.cli? && p.option? }.
       map{ |p| "[#{p.cli_syntax_label}]" }.join(' ')
       s unless s.empty?
     end
-    def arguments_syntax_string
-      s = self.class.interface.parameters.select{ |p| p.cli? && p.argument? }.
+    def interface_reflector_arguments_syntax_string
+      s = interface.parameters.select{ |p| p.cli? && p.argument? }.
       map(&:cli_syntax_label).join(' ')
       s unless s.empty?
     end
+    alias_method :arguments_syntax_string,
+      :interface_reflector_arguments_syntax_string
     def usage
       "#{em('usage:')} #{usage_syntax_string}"
     end
