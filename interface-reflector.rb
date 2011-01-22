@@ -4,7 +4,7 @@ module Hipe::InterfaceReflector
   class << self
     def extended cls
       cls.class_eval do
-        extend ClassMethods
+        extend ModuleMethods
         include InstanceMethods
       end
     end
@@ -70,7 +70,7 @@ module Hipe::InterfaceReflector
       ).flatten.join
     end
   end
-  module ClassMethods
+  module ModuleMethods
     def interface
       @interface ||= build_interface
     end
@@ -214,22 +214,21 @@ module Hipe::InterfaceReflector
   end
   class Fatal < ::RuntimeError; end
   module Colorizer
-    Codes = {:bold=>1,:dark_red=>31,:green=>32,:yellow=>33,:blue=>34,
-      :purple=>35,:cyan=>36,:white=>37,:red=>38}
+    Codes = {:bold=>1,:blink=>5,:dark_red=>31,:green=>32,:yellow=>33,
+      :blue=>34,:purple=>35,:cyan=>36,:white=>37,:red=>38}
     def color(s, *a); "\e[#{a.map{|x|Codes[x]}.compact*';'}m#{s}\e[0m" end
   end
   module CliInstanceMethods
     include Colorizer
     def run argv
       @argv = argv
-      @c = build_context
+      @c ||= build_context # when parent-child, parent might set e.c.
       @exit_ok = nil
       @queue = []
       if ! (parse_opts and parse_args)
         on_parse_failure or return
       end
       @queue.push default_action
-      # catch(:early_exit){ while(m = @queue.pop); send(m) end }
       begin
         while(m = @queue.pop); send(m) end
       rescue Fatal => e
@@ -238,6 +237,7 @@ module Hipe::InterfaceReflector
     end
     attr_accessor :c
     alias_method :execution_context, :c
+    alias_method :execution_context=, :c= # just for parent - child
   protected
     Styles = { :error => [:bold, :red], :em => [:bold, :green] }
     def style(s, style); color(s, *Styles[style]) end
@@ -317,7 +317,7 @@ module Hipe::InterfaceReflector
       self.class.interface
     end
     def interface_reflector_build_documenting_option_parser
-      args = self.interface.parameters.select{|p| p.cli? && p.argument?}
+      args = interface.parameters.select{|p| p.cli? && p.argument?}
       if args.empty? ; ophack = cli_option_parser else
         ophack = cli_option_parser.dup
         ophack.separator(em("arguments:"))
