@@ -1,6 +1,6 @@
 module Hipe::InterfaceReflector
-  module SubcommandsModuleMethods
-    include ::Hipe::InterfaceReflector::ClassMethods
+  module DispatcherModuleMethods
+    include ::Hipe::InterfaceReflector::ModuleMethods
     def build_interface
       ::Hipe::InterfaceReflector::RequestParser.new do |o|
         o.on('-h [<subcommand>]','--help [<subcommand>]', 'show this screen')
@@ -13,17 +13,15 @@ module Hipe::InterfaceReflector
     end
     attr_reader :subcommands
   end
-  module SubcommandsCliInstanceMethods
+  module DispatcherCliInstanceMethods
     include ::Hipe::InterfaceReflector::InstanceMethods
     include ::Hipe::InterfaceReflector::CliInstanceMethods
     def default_action; :dispatch end
     def arguments_syntax_string
-      if self.class.respond_to? :subcommands
-        '[ ' << self.class.subcommands.map(&:name).join(' | ') <<
-          ' ] [opts] [args]'
-      else
-        interface_reflector_arguments_syntax_string
-      end
+      respond_to?(:subcommands) or
+        return interface_reflector_arguments_syntax_string
+      '[ ' << self.class.subcommands.map(&:name).join(' | ') <<
+        ' ] [opts] [args]'
     end
     def build_documenting_option_parser
       if ! self.class.respond_to?(:subcommands)
@@ -85,6 +83,8 @@ module Hipe::InterfaceReflector
     end
     def subcommand_soft_match?; true end
     def parse_args
+      self.class.respond_to?(:subcommands) or
+        return interface_reflector_parse_args
       @argv.empty? and return error("expecting subcommand: " <<
         oxford_comma(
           self.class.subcommands.map{ |c| color(c.name, :green)},' or '))
@@ -95,20 +95,27 @@ module Hipe::InterfaceReflector
       true
     end
     def dispatch
-      puts "fake running #{@subcommand.name.inspect} with: #{@argv.inspect}"
+      @subcommand.execution_context = @c
+      @subcommand.parent = self
+      @subcommand.invoked_with = @argv.shift
+      @subcommand.run @argv
     end
   end
   module CommandDefinition
     def self.extended mod
       mod.class_eval do
-        extend ::Hipe::InterfaceReflector # oh boy! not sure
-        include InstanceMethods
+        # for now it's as if we are just including, not extending but this is
+        # preserved in case we add more DSL-like features to the Command class
+        include CommandDefinitionInstanceMethods
       end
     end
-    module InstanceMethods
+    module CommandDefinitionInstanceMethods
+      include Hipe::InterfaceReflector::InstanceMethods
+
       def cli_label; name end
       def intern;    name end
       attr_reader   :name
+      attr_accessor :invoked_with # just in case you need to know
       def option_parser &block
         if ! block_given?
           interface
@@ -118,8 +125,11 @@ module Hipe::InterfaceReflector
           @interface_definition_block = block
         end
       end
+      def parent= p
+        class << self ; self end.send(:define_method, :parent) { p }
+      end
       def show_help parent, argv
-        class << self; self end.send(:define_method, :parent){ parent }
+        self.parent = parent
         @c = parent.execution_context
         @argv = argv
         on_help argv.shift
