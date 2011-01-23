@@ -79,11 +79,10 @@ module Hipe::InterfaceReflector::Installer
     # wget-type installation begin
     def execute_wget host, url, dest
       File.exist?(dest) and return @c.err.puts("exists: #{dest}")
-      @c.err.print "getting http://#{host}#{dest}\n"
+      @c.err.print "getting http://#{host}#{url}\n"
       len = 0;
       if ! @c.key?(:dry_run) || ! @c[:dry_run]
-        puts "dry run not detected"
-        false && File.open(dest, 'w') do |fh|
+        File.open(dest, 'w') do |fh|
           res = Net::HTTP.start(host) do |http|
             http.get(url) do |str|
               @c.err.print '.'
