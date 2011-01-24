@@ -84,7 +84,7 @@ module Hipe::InterfaceReflector
       return [found, nil]
     end
     attr_accessor :invoked_with
-    def on_help arg
+    def on_help arg=nil
       @options_ok = false # pretend there was a parse failure
       ['-h', '--help'].include?(arg) and arg = nil
       if arg && arg[0,1] == '-'

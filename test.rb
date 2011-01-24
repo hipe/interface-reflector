@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# puts "\e[5;35mruby-debug\e[0m"; require 'rubygems'; require 'ruby-debug'
+puts "\e[5;35mruby-debug\e[0m"; require 'rubygems'; require 'ruby-debug'
 
 require 'test/unit/testcase'
 require 'stringio'
@@ -15,6 +15,7 @@ class NeverSee
     t.desc 'get foobie and do doobie', 'doible foible'
     t.option_parser do |o|
       o.on '-n', '--dry-run', 'dry run'
+      o.on '-h', '--help', 'this screen'
     end
   end
   def on_foo
@@ -110,13 +111,14 @@ module Hipe::InterfaceReflectorTests
     end
     def test_minus_h_command
       assert_serr %w(-h fo), <<-S.unindent
-        usage: foo.rb foo [-n]
+        usage: foo.rb foo [-n] [-h]
         description:
         get foobie and do doobie
         doible foible
 
         options:
             -n, --dry-run                    dry run
+            -h, --help                       this screen
       S
     end
     def test_minus_h_with_bad_command
@@ -128,13 +130,14 @@ module Hipe::InterfaceReflectorTests
     end
     def test_command_minus_h
       assert_serr %w(foo -h), <<-S.unindent
-        usage: play.rb foo [-n]
+        usage: foo.rb foo [-n] [-h]
         description:
         get foobie and do doobie
         doible foible
 
         options:
             -n, --dry-run                    dry run
+            -h, --help                       this screen
       S
     end
   end
