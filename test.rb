@@ -108,6 +108,35 @@ module Hipe::InterfaceReflectorTests
             bar-baz
       S
     end
+    def test_minus_h_command
+      assert_serr %w(-h fo), <<-S.unindent
+        usage: foo.rb foo [-n]
+        description:
+        get foobie and do doobie
+        doible foible
+
+        options:
+            -n, --dry-run                    dry run
+      S
+    end
+    def test_minus_h_with_bad_command
+      assert_serr %w(-h fiz), <<-S.unindent
+        Invalid subcommand "fiz". expecting: foo or bar-baz.
+        usage: foo.rb [-h [<subcommand>]] [ foo | bar-baz ] [opts] [args]
+        foo.rb -h for help
+      S
+    end
+    def test_command_minus_h
+      assert_serr %w(foo -h), <<-S.unindent
+        usage: play.rb foo [-n]
+        description:
+        get foobie and do doobie
+        doible foible
+
+        options:
+            -n, --dry-run                    dry run
+      S
+    end
   end
 end
 
