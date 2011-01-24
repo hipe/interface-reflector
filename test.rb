@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+# puts "\e[5;35mruby-debug\e[0m"; require 'rubygems'; require 'ruby-debug'
 
 require 'test/unit/testcase'
 require 'stringio'
@@ -32,7 +33,7 @@ class NeverSee
 end
 class String
   def unindent
-    gsub(/^ +/, '')
+    (md = match(/\A( +)/)) ? gsub(/^#{md[1]}/, '') : self
   end
 end
 module Hipe::InterfaceReflectorTests
@@ -54,6 +55,7 @@ module Hipe::InterfaceReflectorTests
             @err.rewind
             s = @err.read
             @err.rewind
+            @err.truncate(0)
             s
           end
           a
@@ -70,7 +72,16 @@ module Hipe::InterfaceReflectorTests
     def assert_serr args, want
       app.run args
       have = app.execution_context.flush_err
-      assert_equal want, have
+      if have == want
+        assert_equal want, have
+      else
+        $stderr.puts "want:#{'<'*20}\n#{linus(want)}DONEDONE"
+        $stderr.puts "have:#{'>'*20}\n#{linus(have)}DONEDONE\n\n"
+        assert(false, 'Strings were not equal.')
+      end
+    end
+    def linus str
+      str.gsub("\n", "XXX\n")
     end
     def test_nothing
       assert_serr [], <<-S.unindent
@@ -84,6 +95,17 @@ module Hipe::InterfaceReflectorTests
         Invalid subcommand "xxx". expecting: foo or bar-baz.
         usage: foo.rb [-h [<subcommand>]] [ foo | bar-baz ] [opts] [args]
         foo.rb -h for help
+      S
+    end
+    def test_minus_h
+      assert_serr %w(-h), <<-S.unindent
+        usage: foo.rb [-h [<subcommand>]] [ foo | bar-baz ] [opts] [args]
+        options:
+            -h, --help [<subcommand>]        show this screen
+        subcommands:
+            foo                              get foobie and do doobie
+                                             doible foible
+            bar-baz
       S
     end
   end
