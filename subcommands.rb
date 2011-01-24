@@ -1,20 +1,35 @@
 module Hipe::InterfaceReflector
+  module SubcommandsCli
+    def self.extended mod
+      mod.class_eval do
+        extend  SubcommandCliModuleMethods
+        include SubcommandCliInstanceMethods
+      end
+    end
+  end
   module SubcommandModuleMethods
     include ::Hipe::InterfaceReflector::ModuleMethods
+    def add_subcommand_definition defn
+      @subcommands ||= []
+      @subcommands.push defn
+    end
+    def on name, &b
+      add_subcommand_definition(
+        CommandDefinition.create_subclass(name, self, &b)
+      )
+    end
+    attr_reader :subcommands
+  end
+  module SubcommandCliModuleMethods
+    include SubcommandModuleMethods
     def build_interface
       ::Hipe::InterfaceReflector::RequestParser.new do |o|
         o.on('-h [<subcommand>]','--help [<subcommand>]', 'show this screen')
         o.arg('<subcommand>')
       end
     end
-    def add_subcommand_definition defn
-      @subcommands ||= []
-      @subcommands.push defn
-    end
-    attr_reader :subcommands
   end
   module SubcommandCliInstanceMethods
-    # alot of these aren't just for dispatchers but for children
     include ::Hipe::InterfaceReflector::InstanceMethods
     include ::Hipe::InterfaceReflector::CliInstanceMethods
     def arguments_syntax_string
@@ -34,7 +49,15 @@ module Hipe::InterfaceReflector
       end
       ophack
     end
-    def default_action; :dispatch end
+    def cli_label;                                  self.class.intern.to_s end
+    def default_action;                 @subcommand ? :dispatch : :execute end
+    def dispatch
+      child = @subcommand.subcommand_execution_instance
+      child.execution_context = @c
+      child.parent = self
+      child.invoked_with = @argv.shift
+      child.run @argv
+    end
     alias_method :execution_context=, :c=
     def find_subcommand attempt
       subs = subcommands
@@ -87,6 +110,16 @@ module Hipe::InterfaceReflector
       end
       true # no parsing of opts, deferred
     end
+    def render_desc o
+      respond_to?(:desc_lines) or return # root node might not?
+      if desc_lines.size > 1
+        o.separator(em("description:"))
+        desc_lines.each { |l| o.separator(l) }
+        o.separator ''
+      else
+        o.separator(em("description: ") << desc_lines.first)
+      end
+    end
     def subcommands
       self.class.respond_to?(:subcommands) ? self.class.subcommands : nil
     end
@@ -98,6 +131,12 @@ module Hipe::InterfaceReflector
       end
     end
     def subcommand_soft_match?; true end
+    def usage_syntax_string
+      [ subcommand_fully_qualified_name,
+        options_syntax_string,
+        arguments_syntax_string
+      ].compact*' '
+    end
     def parse_args
       (subs = subcommands) or return interface_reflector_parse_args
       @argv.empty? and return error("expecting subcommand: " <<
@@ -108,63 +147,139 @@ module Hipe::InterfaceReflector
       @subcommand = found
       true
     end
-    def dispatch
-      child = @subcommand.subcommand_execution_instance
-      child.execution_context = @c
-      child.parent = self
-      child.invoked_with = @argv.shift
-      child.run @argv
-    end
   end
-  module CommandDefinitionClass
-    def self.extended cls
-      cls.class_eval do
-        extend  CommandDefinitionModuleMethods
-        include CommandDefinitionInstanceMethods
+  module DefStructModuleMethods
+    def default name
+      ancestors.each do |mod|
+        if mod.respond_to?(:defaults) && mod.defaults.key?(name)
+          return mod.defaults[name]
+        end
       end
+      nil
     end
-    module CommandDefinitionModuleMethods
-      include Hipe::InterfaceReflector::InstanceMethods
-      include Hipe::InterfaceReflector::SubcommandModuleMethods
-      def interface
-        @interface ||= begin
-          if @interface_definition_block.nil?
-            TheEmptyInterface
-          else
-            b = @interface_definition_block;
-            @interface_definition_block = nil
-            ::Hipe::InterfaceReflector::RequestParser.new(&b)
+    def defaults
+      @defaults ||= {}
+    end
+    def attr_akksessor *names
+      require File.dirname(__FILE__) + '/templite' # ick, meh
+      mm = class << self; self end
+      names.each do |name|
+        mm.send(:define_method, name) do |*a|
+          a.empty? ? default(name) :
+            (defaults[name] = (a.size == 1 ? a.first : a))
+        end
+        define_method(name) do |*a|
+          a.any? ? values[name] = (a.size == 1 ? a.first : a) :
+          begin
+            v = values.key?(name) ? values[name] : self.class.default(name)
+            if v.kind_of?(String) && v.index('{')
+              (values[name] = Templite.new(v)).render(self)
+            elsif v.kind_of?(Array) && [String] == v.map(&:class).uniq
+              v.map { |x| x.index('{') ? Templite.new(x).render(self) : x }
+            elsif v.kind_of?(Templite)
+              v.render self
+            else
+              v
+            end
           end
         end
       end
-      def intern; name end
-      def option_parser &block
-        if ! block_given?
-          interface
-        elsif @interface_definition_block
-          fail("interface merging not supported!")
+    end
+  end
+  module DefStructInstanceMethods
+    def values
+      @values ||= {}
+    end
+  end
+  module CommandDefinitionModuleMethods
+    include DefStructModuleMethods
+    include SubcommandCliModuleMethods
+    def constantize name
+      # not isomorphic, just whatever you have to do to get it valid
+      name.to_s.sub(/^[^a-z]/i, '').gsub(/[^a-z0-9_]/, '').
+        sub(/^([a-z])/){ $1.upcase }.intern
+    end
+    def create_subclass name, namespace_module, &b
+      k = constantize name
+      namespace_module.const_defined?(k) and fail("already have: #{k}")
+      kls = Class.new(self) # make a subclass of whatever class this is
+      kls.name = name
+      class << kls; self end.send(:define_method, :inspect) do
+        "#{namespace_module.inspect}::#{k}"
+      end
+      yield kls
+      namespace_module.const_set(k, kls)
+      kls
+    end
+    def execute &b
+      @execution_block = b
+    end
+    attr_reader :execution_block
+    def interface
+      @interface ||= begin
+        if @interface_definition_block.nil?
+          TheEmptyInterface
         else
-          @interface_definition_block = block
+          b = @interface_definition_block;
+          @interface_definition_block = nil
+          ::Hipe::InterfaceReflector::RequestParser.new(&b)
         end
       end
-      def subcommand_documenting_instance; new end
-      def subcommand_execution_instance;   new end
-      def subcommand_on_help argv, parent
-        new.subcommand_on_help argv, parent
+    end
+    def intern; name end
+    def option_parser &block
+      # cheap sneaky way for us to know that this is intended as a cli command
+      extend SubcommandCliModuleMethods
+      include SubcommandCliInstanceMethods
+      if ! block_given?
+        interface
+      elsif @interface_definition_block
+        fail("interface merging not supported!")
+      else
+        @interface_definition_block = block
       end
     end
-    module CommandDefinitionInstanceMethods
-      def cli_label; self.class.intern.to_s end
-      def intern;    self.class.intern      end
-      def parent= p
-        class << self ; self end.send(:define_method, :parent) { p }
-      end
-      def subcommand_on_help argv, parent
-        self.parent = parent
-        @c = parent.execution_context
-        @argv = argv
-        on_help argv.shift
+    attr_accessor :name
+    def subcommand_documenting_instance; new end
+    def subcommand_execution_instance;   new end
+    def subcommand_on_help argv, parent
+      new.subcommand_on_help argv, parent
+    end
+  end
+  module CommandDefinitionInstanceMethods
+    include InstanceMethods # get this here now in the ancestor chain
+    include DefStructInstanceMethods
+    def as_method_name
+      "on_#{intern.to_s.gsub('-','_').gsub(/[^a-z0-9_]/i, '')}"
+    end
+    def desc_lines
+      case d = desc
+      when NilClass ; []
+      when Array ; d
+      else [d]
       end
     end
+    def execute
+      if b = self.class.execution_block
+        b.call
+      else
+        parent.send as_method_name
+      end
+    end
+    def intern;                                         self.class.intern end
+    def parent= p
+      class << self ; self end.send(:define_method, :parent) { p }
+    end
+    def subcommand_on_help argv, parent
+      self.parent = parent
+      @c = parent.execution_context
+      @argv = argv
+      on_help argv.shift
+    end
+  end
+  class CommandDefinition
+    extend CommandDefinitionModuleMethods
+    include CommandDefinitionInstanceMethods
+    attr_akksessor :desc
   end
 end
