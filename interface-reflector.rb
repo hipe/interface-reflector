@@ -223,7 +223,7 @@ module Hipe::InterfaceReflector
     def run argv
       @argv = argv
       @c ||= build_context # when parent-child, parent might set e.c.
-      @exit_ok = nil
+      instance_variable_defined?('@exit_ok') or @exit_ok = nil
       @queue = []
       if ! (parse_opts and parse_args)
         on_parse_failure or return
@@ -237,7 +237,6 @@ module Hipe::InterfaceReflector
     end
     attr_accessor :c
     alias_method :execution_context, :c
-    alias_method :execution_context=, :c= # just for parent - child
   protected
     Styles = { :error => [:bold, :red], :em => [:bold, :green] }
     def style(s, style); color(s, *Styles[style]) end
