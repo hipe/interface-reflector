@@ -13,13 +13,13 @@ module Hipe::InterfaceReflector::Installer
     end
   end
   module InstallerModuleMethods
-    include ::Hipe::InterfaceReflector::DispatcherModuleMethods
+    include ::Hipe::InterfaceReflector::SubcommandModuleMethods
     def task name, &b
-      add_subcommand_definition TaskDef.new(name, &b)
+      add_subcommand_definition TaskDef.create_subclass(name, self, &b)
     end
   end
   module InstallerInstanceMethods
-    include ::Hipe::InterfaceReflector::DispatcherCliInstanceMethods
+    include ::Hipe::InterfaceReflector::SubcommandCliInstanceMethods
   end
   Templite = Hipe::InterfaceReflector::Templite
   class DefStruct
@@ -28,12 +28,19 @@ module Hipe::InterfaceReflector::Installer
     end
     attr_reader :vals
     class << self
+      def defaults; @defaults ||= {} end
       def attr_akksessor *names
+        mm = class << self ; self end
         names.each do |name|
+          mm.send(:define_method, name) do |*a|
+            a.any? ? defaults[name] = (a.size == 1 ? a.first : a) : begin
+              defaults[name]
+            end
+          end
           define_method(name) do |*a|
             a.any? ? @vals[name] = (a.size == 1 ? a.first : a) :
             begin
-              v = @vals[name]
+              v = @vals.key?(name) ? @vals[name] : self.class.defaults[name]
               if v.kind_of?(String) && v.index('{')
                 (@vals[name] = Templite.new(v)).render(self)
               elsif v.kind_of?(Array) && [String] == v.map(&:class).uniq
@@ -50,16 +57,31 @@ module Hipe::InterfaceReflector::Installer
     end
   end
   class TaskDef < DefStruct
-    include ::Hipe::InterfaceReflector::CliInstanceMethods # the order ..
-    extend ::Hipe::InterfaceReflector::CommandDefinition   # is important!
-    # nested not yet ?
-    def initialize name, &b
-      @name = name
-      super()
-      yield self
-    end
+    include ::Hipe::InterfaceReflector::SubcommandCliInstanceMethods #order ..
+    extend ::Hipe::InterfaceReflector::CommandDefinitionClass # is important!
     attr_akksessor :desc, :host, :url, :dest
-    def desc?; @vals.key? :desc end
+    # nested not yet ?
+    class << self
+      attr_accessor :name
+      def constantize name
+        name.to_s.sub(/^[^a-z]/i, '').gsub(/[^a-z0-9_]/, '').
+          sub(/^([a-z])/){ $1.upcase }.intern
+      end
+      def create_subclass name, namespace_module, &b
+        k = constantize name
+        namespace_module.const_defined?(k) and fail("already have: #{k}")
+        kls = Class.new TaskDef
+        kls.name = name
+        class << kls; self end.send(:define_method, :inspect) do
+          "#{namespace_module.inspect}::#{k}"
+        end
+        yield(kls)
+        namespace_module.const_set(k, kls)
+        kls
+      end
+    end
+
+    def desc?; @vals.key?(:desc) || self.class.defaults.key?(:desc) end
     def desc_lines
       case d = desc
       when NilClass ; []
@@ -69,10 +91,11 @@ module Hipe::InterfaceReflector::Installer
     end
     def default_action; :execute end
     def execute
-      if ([:host, :url, :dest] - @vals.keys).empty?
+      keys = @vals.keys | self.class.defaults.keys
+      if ([:host, :url, :dest] - keys).empty?
         execute_wget host, url, dest
       else
-        fail("don't know what to do with: #{@vals.keys.join(', ')}")
+        fail("don't know what to do with: #{keys.join(', ')}")
       end
     end
 
@@ -113,21 +136,10 @@ module Hipe::InterfaceReflector::Installer
       end
     end
     def usage_syntax_string
-      [ "#{parent.parent_usage} #{name.to_s}",
+      [ subcommand_fully_qualified_name,
         options_syntax_string,
         arguments_syntax_string
       ].compact*' '
-    end
-    def usage
-      # unlike overridee, we don't want to put the usage: string
-      usage_syntax_string
-    end
-    def show_help parent, argv
-      # forget children tasks in argv for now
-      self.parent = parent
-      @c = parent.execution_context
-      @c.err.puts documenting_option_parser.to_s
-      @exit_ok = true
     end
   end
 end
