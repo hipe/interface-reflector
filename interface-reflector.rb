@@ -21,7 +21,7 @@ module Hipe::InterfaceReflector
       require 'optparse'
       ::OptionParser.new do |o|
         o.banner = usage
-        desc? and render_desc(o)
+        respond_to?(:render_desc) and render_desc(o)
         if (a = interface.parameters.select{ |p| p.cli? and p.option? }).any?
           o.separator(em("options:"))
           a.each do |p|
@@ -33,11 +33,15 @@ module Hipe::InterfaceReflector
     def build_context # hrm
       GenericContext.new
     end
-    def desc?; false end # other libs might redefine
     def dispatch_option parameter, value
-      args = parameter.takes_argument? ? [value] : []
-      send("on_#{parameter.intern}", *args) or
-        handle_failed_option(parameter, value)
+      handler = "on_#{parameter.intern}"
+      if respond_to? handler
+        args = parameter.takes_argument? ? [value] : []
+        send(handler, *args) or
+          handle_failed_option(parameter, value)
+      else
+        @c[parameter.intern] = parameter.takes_argument? ? value : true
+      end
     end
     # file utils convenience smell begin
     class << self
@@ -237,6 +241,7 @@ module Hipe::InterfaceReflector
     end
     attr_accessor :c
     alias_method :execution_context, :c
+    attr_writer :program_name
   protected
     Styles = { :error => [:bold, :red], :em => [:bold, :green] }
     def style(s, style); color(s, *Styles[style]) end
@@ -338,7 +343,7 @@ module Hipe::InterfaceReflector
       @exit_ok = true
     end
     def program_name
-      File.basename($PROGRAM_NAME)
+      @program_name || File.basename($PROGRAM_NAME)
     end
     def usage_syntax_string
       [program_name,options_syntax_string,arguments_syntax_string].compact*' '
