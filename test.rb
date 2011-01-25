@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # puts "\e[5;35mruby-debug\e[0m"; require 'rubygems'; require 'ruby-debug'
 
-require 'test/unit/testcase'
+require 'test/unit'
 require 'test/unit/collector'
 require 'stringio'
 
@@ -34,6 +34,9 @@ module Hipe::InterfaceReflectorTests
       ::Hipe::InterfaceReflector::CliInstanceMethods.
         send(:define_method, :color){ |a, *b| a }
       @color_off = true
+    end
+    def common_setup!
+      color_off!
     end
   end
   class ModuleCollector
@@ -235,12 +238,19 @@ module Hipe::InterfaceReflectorTests
   end
 end
 
-if __FILE__ == $PROGRAM_NAME || 'rcov' == File.basename($PROGRAM_NAME)
-  Hipe::InterfaceReflectorTests.color_off!
+if 'rcov' == File.basename($PROGRAM_NAME)
+  Hipe::InterfaceReflectorTests.common_setup!
+  # for no particular reason, we do this cutely, back when we were writing our
+  # own runner
   require 'test/unit/ui/console/testrunner'
   m = Hipe::InterfaceReflectorTests
   suites = Hipe::InterfaceReflectorTests::ModuleCollector.new(
     Hipe::InterfaceReflectorTests).collect
   # SILENT PROGRESS_ONLY NORMAL VERBOSE
   Test::Unit::UI::Console::TestRunner.run(suites, Test::Unit::UI::NORMAL)
+elsif __FILE__ == $PROGRAM_NAME
+  Hipe::InterfaceReflectorTests.common_setup!
+  # let autorunner do its magic
+else
+  Test::Unit.run = true # don't automatically run at exit
 end
