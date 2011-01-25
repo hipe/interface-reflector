@@ -25,6 +25,10 @@ class Hipe::InterfaceReflector::GenericContext < Hash
   end
   def flush_err; _flush @err end
   def flush_out; _flush @out end
+  def clear_both!
+    @err.rewind; @out.rewind
+    @err.truncate(0); @out.truncate(0)
+  end
 end
 
 module Hipe::InterfaceReflectorTests
@@ -86,6 +90,7 @@ module Hipe::InterfaceReflectorTests
       self.class.app
     end
     def setup
+      app.execution_context.clear_both!
       app.execution_context.clear
       app.instance_variable_set('@exit_ok', nil)
     end
@@ -215,15 +220,20 @@ module Hipe::InterfaceReflectorTests
     def self.build_interface
       Hipe::InterfaceReflector::RequestParser.new do |o|
         o.on('-h', '--help', 'foobie doobie')
-        o.on('-d', '--dry-run', 'drizzle rizzle')
+        o.on('-n', '--num FOO', 'some number', :default => 10)
+        o.on('-v', '--version', 'show version number')
         o.arg('<foo>', "it's foo")
+        o.arg('[<bar> [<bar> [..]]]', "bar is a glob")
       end
     end
     def default_action; :go end
     def go
-      @c.out.puts "Payload: #{@c[:foo].inspect}."
+      @c[:num] == '13' and fatal("must never be 13")
+      pl = [@c[:foo], * (@c[:bar] || [])]
+      @c.out.puts "Payload: #{pl.map(&:inspect).join(', ')}."
       :who_hah
     end
+    def version_string; 'verzion123' end
   end
 end
 
@@ -235,32 +245,50 @@ module Hipe::InterfaceReflectorTests
     def test_nothing
       assert_serr [], <<-S.unindent
         expecting: <foo>
-        usage: simp.rb [-h] [-d] <foo>
+        usage: simp.rb [-h] [-n] [-v] <foo> [<bar> [<bar> [..]]]
         simp.rb -h for help
       S
     end
     def test_minus_h
       assert_serr %w(-h), <<-S.unindent
-        usage: simp.rb [-h] [-d] <foo>
+        usage: simp.rb [-h] [-n] [-v] <foo> [<bar> [<bar> [..]]]
         options:
             -h, --help                       foobie doobie
-            -d, --dry-run                    drizzle rizzle
+            -n, --num FOO                    some number (default: 10)
+            -v, --version                    show version number
         arguments:
             <foo>                            it's foo
+            <bar>                            bar is a glob
       S
     end
     def test_minus_h_plus_argument_runs_the_thing
       resp = app.run(%w(-h faz))
-      #assert_equal :who_hah, resp
+      assert_equal :who_hah, resp
       assert_equal_strings app.c.flush_err, <<-S.unindent
-        usage: simp.rb [-h] [-d] <foo>
+        usage: simp.rb [-h] [-n] [-v] <foo> [<bar> [<bar> [..]]]
         options:
             -h, --help                       foobie doobie
-            -d, --dry-run                    drizzle rizzle
+            -n, --num FOO                    some number (default: 10)
+            -v, --version                    show version number
         arguments:
             <foo>                            it's foo
+            <bar>                            bar is a glob
       S
       assert_equal_strings app.c.flush_out, "Payload: \"faz\".\n"
+    end
+    def test_option_with_arg_with_no_handler
+      app.run %w(-n 12 foo)
+      assert_equal '12', app.execution_context[:num]
+    end
+    def test_file_utils_get
+      m = ::Hipe::InterfaceReflector::InstanceMethods
+      fu = app.file_utils
+      assert_equal m::FileUtilsAdapter, fu.class
+    end
+    def test_throw_and_catch_a_fatal
+      assert_serr %w(-n 13 foo), <<-S.unindent
+        must never be 13
+      S
     end
   end
 end
