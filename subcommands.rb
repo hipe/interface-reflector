@@ -232,7 +232,7 @@ module Hipe::InterfaceReflector
     end
     def intern; name end
     def request_parser &block
-      # cheap sneaky way for us to know that this is intended as a cli command
+      # @fixme figure out an elegant way to determine that this is cli
       extend SubcommandCliModuleMethods
       include SubcommandCliInstanceMethods
       if ! block_given?
