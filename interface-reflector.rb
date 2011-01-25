@@ -235,8 +235,10 @@ module Hipe::InterfaceReflector
         on_parse_failure or return
       end
       @queue.push default_action
+      last = nil
       begin
-        while(m = @queue.pop); send(m) end
+        while(m = @queue.pop); last = send(m) end
+        last
       rescue Fatal => e
         handle_fatal e
       end
@@ -315,6 +317,7 @@ module Hipe::InterfaceReflector
     end
     alias_method :on_help, :interface_reflector_on_help
     def on_parse_failure
+      @exit_ok and return false
       @usage_shown or (@usage_shown = true and @c.err.puts usage)
       @show_invite == false or @c.err.puts(invite)
       false
