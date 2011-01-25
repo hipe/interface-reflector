@@ -140,10 +140,17 @@ module Hipe::InterfaceReflectorTests
             -h, --help                       this screen
       S
     end
+    def test_command_minus_m
+      assert_serr %w(foo -m), <<-S.unindent
+        invalid option: -m
+        usage: foo.rb foo [-n] [-h]
+        foo.rb -h for help
+      S
+    end
   end
 end
 
-if __FILE__ == $PROGRAM_NAME
+if __FILE__ == $PROGRAM_NAME || 'rcov' == File.basename($PROGRAM_NAME)
   require 'test/unit/ui/console/testrunner'
   Test::Unit::UI::Console::TestRunner.new(
     Hipe::InterfaceReflectorTests::Foobie,
