@@ -4,7 +4,7 @@ task :rcov do
   FileUtils.cd(File.dirname(__FILE__)) do
     output = './coverage'
     Open3.popen3(
-      'rcov', '-x', '^/', '-o', output, './test.rb', '-t'
+      'rcov', '-x', '^/', '-x', '^test\.rb', '-T', '-o', output, './test.rb'
     ) do |sin, sout, serr|
       $stdout.puts sout.read
       (s = serr.read) == '' or $stderr.puts(s)
