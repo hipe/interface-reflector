@@ -95,6 +95,9 @@ module Hipe::InterfaceReflectorTests
     def assert_serr args, want
       app.run args
       have = app.execution_context.flush_err
+      assert_equal_strings have, want
+    end
+    def assert_equal_strings have, want
       if have == want
         assert_equal want, have
       else
@@ -218,7 +221,8 @@ module Hipe::InterfaceReflectorTests
     end
     def default_action; :go end
     def go
-      @c.out.puts "Payload."
+      @c.out.puts "Payload: #{@c[:foo].inspect}."
+      :who_hah
     end
   end
 end
@@ -234,6 +238,29 @@ module Hipe::InterfaceReflectorTests
         usage: simp.rb [-h] [-d] <foo>
         simp.rb -h for help
       S
+    end
+    def test_minus_h
+      assert_serr %w(-h), <<-S.unindent
+        usage: simp.rb [-h] [-d] <foo>
+        options:
+            -h, --help                       foobie doobie
+            -d, --dry-run                    drizzle rizzle
+        arguments:
+            <foo>                            it's foo
+      S
+    end
+    def test_minus_h_plus_argument_runs_the_thing
+      resp = app.run(%w(-h faz))
+      #assert_equal :who_hah, resp
+      assert_equal_strings app.c.flush_err, <<-S.unindent
+        usage: simp.rb [-h] [-d] <foo>
+        options:
+            -h, --help                       foobie doobie
+            -d, --dry-run                    drizzle rizzle
+        arguments:
+            <foo>                            it's foo
+      S
+      assert_equal_strings app.c.flush_out, "Payload: \"faz\".\n"
     end
   end
 end
