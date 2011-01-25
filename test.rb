@@ -98,8 +98,14 @@ module Hipe::InterfaceReflectorTests
       self.class.app
     end
     def assert_serr args, want
+      _assert_sout_or_serr "err", args, want
+    end
+    def assert_sout args, want
+      _assert_sout_or_serr "out", args, want
+    end
+    def _assert_sout_or_serr which, args, want
       app.run args
-      have = app.execution_context.flush_err
+      have = app.execution_context.send("flush_#{which}")
       assert_equal_strings have, want
     end
     def assert_equal_strings have, want
@@ -113,6 +119,9 @@ module Hipe::InterfaceReflectorTests
     end
     def linus str
       str.gsub("\n", "XXX\n")
+    end
+    def prepare_app *a
+      self.class.prepare_app(*a)
     end
   end
 end
@@ -223,13 +232,14 @@ module Hipe::InterfaceReflectorTests
         o.on('-n', '--num FOO', 'some number', :default => 10)
         o.on('-v', '--version', 'show version number')
         o.arg('<foo>', "it's foo")
-        o.arg('[<bar> [<bar> [..]]]', "bar is a glob")
+        o.arg('<bar>', "it's bar")
+        o.arg('[<baz> [<baz> [..]]]', "baz is a glob")
       end
     end
     def default_action; :go end
     def go
       @c[:num] == '13' and fatal("must never be 13")
-      pl = [@c[:foo], * (@c[:bar] || [])]
+      pl = [@c[:foo], @c[:bar], * (@c[:baz] || [])]
       @c.out.puts "Payload: #{pl.map(&:inspect).join(', ')}."
       :who_hah
     end
@@ -244,50 +254,120 @@ module Hipe::InterfaceReflectorTests
     program_name 'simp.rb'
     def test_nothing
       assert_serr [], <<-S.unindent
-        expecting: <foo>
-        usage: simp.rb [-h] [-n] [-v] <foo> [<bar> [<bar> [..]]]
+        expecting: <foo> and <bar>
+        usage: simp.rb [-h] [-n] [-v] <foo> <bar> [<baz> [<baz> [..]]]
         simp.rb -h for help
       S
     end
     def test_minus_h
       assert_serr %w(-h), <<-S.unindent
-        usage: simp.rb [-h] [-n] [-v] <foo> [<bar> [<bar> [..]]]
+        usage: simp.rb [-h] [-n] [-v] <foo> <bar> [<baz> [<baz> [..]]]
         options:
             -h, --help                       foobie doobie
             -n, --num FOO                    some number (default: 10)
             -v, --version                    show version number
         arguments:
             <foo>                            it's foo
-            <bar>                            bar is a glob
+            <bar>                            it's bar
+            <baz>                            baz is a glob
       S
     end
     def test_minus_h_plus_argument_runs_the_thing
-      resp = app.run(%w(-h faz))
+      resp = app.run(%w(-h fiz biz))
       assert_equal :who_hah, resp
       assert_equal_strings app.c.flush_err, <<-S.unindent
-        usage: simp.rb [-h] [-n] [-v] <foo> [<bar> [<bar> [..]]]
+        usage: simp.rb [-h] [-n] [-v] <foo> <bar> [<baz> [<baz> [..]]]
         options:
             -h, --help                       foobie doobie
             -n, --num FOO                    some number (default: 10)
             -v, --version                    show version number
         arguments:
             <foo>                            it's foo
-            <bar>                            bar is a glob
+            <bar>                            it's bar
+            <baz>                            baz is a glob
       S
-      assert_equal_strings app.c.flush_out, "Payload: \"faz\".\n"
+      assert_equal_strings app.c.flush_out, "Payload: \"fiz\", \"biz\".\n"
     end
     def test_option_with_arg_with_no_handler
-      app.run %w(-n 12 foo)
+      app.run %w(-n 12 foo bar)
       assert_equal '12', app.execution_context[:num]
     end
     def test_file_utils_get
       m = ::Hipe::InterfaceReflector::InstanceMethods
       fu = app.file_utils
       assert_equal m::FileUtilsAdapter, fu.class
+      hold = fu.object_id
+      assert_equal hold, app.file_utils.object_id
+      app.instance_variable_set('@file_utils', nil)
+      assert_not_equal hold, app.file_utils
+    end
+    def test_oxford_comma
+      m = Object.new.extend(Hipe::InterfaceReflector::InstanceMethods)
+      assert_equal('', m.oxford_comma([]) )
+      assert_equal('one', m.oxford_comma(%w(one)))
+      assert_equal('one and two', m.oxford_comma(%w(one two)))
+      assert_equal('one, two and three', m.oxford_comma(%w(one two three)))
+      assert_equal('a, b, c and d', m.oxford_comma(%w(a b c d)))
     end
     def test_throw_and_catch_a_fatal
-      assert_serr %w(-n 13 foo), <<-S.unindent
+      assert_serr %w(-n 13 foo bar), <<-S.unindent
         must never be 13
+      S
+    end
+    def test_globby
+      assert_sout %w(alpha beta gamma wamma), <<-S.unindent
+        Payload: "alpha", "beta", "gamma", "wamma".
+      S
+    end
+    def test_missing_required_arg
+      app = self.class.prepare_app(Class.new.class_eval do
+        extend Hipe::InterfaceReflector
+        include Hipe::InterfaceReflector::CliInstanceMethods
+        interface { }
+        self
+      end, 'anon.rb')
+      app.run %w(boingo foingo)
+      assert_equal_strings(app.c.flush_err, <<-S.unindent)
+        unexpected args: "boingo" and "foingo"
+        usage: anon.rb
+        anon.rb -h for help
+      S
+    end
+    def test_displaying_default_with_no_description
+      app = prepare_app(Class.new.class_eval do
+        extend Hipe::InterfaceReflector
+        include Hipe::InterfaceReflector::CliInstanceMethods
+        interface do |i|
+          i.on('-x', '--xxx', :default => 'x-val')
+          i.on('-h', '--help', 'show hoidy doighty')
+        end
+        def default_action; :hallo end
+        def hallo; end
+        self
+      end, 'anon.rb')
+      app.run %w(-h)
+      assert_equal_strings app.c.flush_err, <<-S.unindent
+        usage: anon.rb [-x] [-h]
+        options:
+            -x, --xxx                        default: "x-val"
+            -h, --help                       show hoidy doighty
+      S
+    end
+    def test_version
+      app = prepare_app(Class.new.class_eval do
+        extend Hipe::InterfaceReflector
+        include Hipe::InterfaceReflector::CliInstanceMethods
+        interface do |i|
+          i.on('-v', '--version', 'shows version string')
+        end
+        def default_action; :hallo end
+        def version_string; '0.1.2' end
+        def hallo; end
+        self
+      end, 'anon-version.rb')
+      app.run %w(-v)
+      assert_equal_strings app.c.flush_err, <<-S.unindent
+        anon-version.rb 0.1.2
       S
     end
   end
