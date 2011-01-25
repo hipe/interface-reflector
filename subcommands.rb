@@ -231,7 +231,7 @@ module Hipe::InterfaceReflector
       end
     end
     def intern; name end
-    def option_parser &block
+    def request_parser &block
       # cheap sneaky way for us to know that this is intended as a cli command
       extend SubcommandCliModuleMethods
       include SubcommandCliInstanceMethods
