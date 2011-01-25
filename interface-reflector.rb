@@ -58,7 +58,8 @@ module Hipe::InterfaceReflector
               ::FileUtils::METHODS.each { |m| public m }
             end
             c
-          end)
+          end
+        )
       end
     end
     def file_utils
@@ -69,14 +70,19 @@ module Hipe::InterfaceReflector
       @options_ok = false
     end
     def oxford_comma items, last_glue = ' and ', rest_glue = ', '
-      items.zip( items.size < 2 ? [] :
+      _ = items.zip( items.size < 2 ? [] :
           ( [last_glue] + Array.new(items.size - 2, rest_glue) ).reverse
-      ).flatten.join
+      ); _.flatten.join    # ugly rcov refactor
     end
   end
   module ModuleMethods
-    def interface
-      @interface ||= build_interface
+    def interface &b
+      block_given? ? define_interface(&b) : (@interface ||= build_interface)
+    end
+    def define_interface
+      @interface and fail("no aggretating interfaces yet!")
+      yield( rp = RequestParser.new )
+      @interface = rp
     end
   end
   class ParameterDefinitionSet < Array
@@ -281,7 +287,7 @@ module Hipe::InterfaceReflector
     alias_method :parse_opts, :interface_reflector_parse_opts
     def interface_reflector_parse_args
       unexpected = missing = glob = nil
-      ps = interface.parameters.select{|p| p.cli? and p.argument? }
+      ps = interface.parameters.select{ |p| p.cli? and p.argument? }
       while @argv.any?
         if ps.any? and ps.first.glob? and glob.nil?
           glob = ps.shift
@@ -299,7 +305,7 @@ module Hipe::InterfaceReflector
       end
       (missing = ps.select(&:required?)).any? or missing = nil
       unexpected || missing and @exit_ok and return false
-      unexpected and return error("unexpected arg#{'s' if @argv.size > 1}:" <<
+      unexpected and return error("unexpected arg#{'s' if @argv.size > 1}: "<<
         oxford_comma(@argv.map(&:inspect)))
       missing and return error("expecting: "<<
         oxford_comma(missing.map(&:cli_label)))
