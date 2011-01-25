@@ -345,6 +345,7 @@ module Hipe::InterfaceReflector
     def program_name
       @program_name || File.basename($PROGRAM_NAME)
     end
+    alias_method :interface_reflector_program_name, :program_name
     def usage_syntax_string
       [program_name,options_syntax_string,arguments_syntax_string].compact*' '
     end
