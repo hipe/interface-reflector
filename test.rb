@@ -373,6 +373,27 @@ module Hipe::InterfaceReflectorTests
   end
 end
 
+module Hipe::InterfaceReflectorTests
+  class SimpleTests < Test::Unit::TestCase
+    extend TestCaseModuleMethods
+    def test_templite
+      require File.dirname(__FILE__) + '/templite'
+      t = Hipe::InterfaceReflector::Templite.new('goofy:{doofy}:loofy')
+      o = Class.new.class_eval do
+        def doofy; 'foofy' end
+        self
+      end.new
+      assert_equal 'goofy:foofy:loofy', t.render(o)
+    end
+    def test_templite_parse_fail
+      e = assert_raises(::RuntimeError) do
+        Hipe::InterfaceReflector::Templite.new('uh{oh')
+      end
+      assert_equal "can't parse pattern: \"{oh\"", e.message
+    end
+  end
+end
+
 if 'rcov' == File.basename($PROGRAM_NAME)
   Hipe::InterfaceReflectorTests.common_setup!
   # for no particular reason, we do this cutely, back when we were writing our
