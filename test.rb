@@ -10,6 +10,7 @@ require here + '/interface-reflector'
 require here + '/subcommands'
 
 
+# library and core extib start
 class String
   def unindent
     (md = match(/\A( +)/)) ? gsub(/^#{md[1]}/, '') : self
@@ -30,7 +31,9 @@ class Hipe::InterfaceReflector::GenericContext < Hash
     @err.truncate(0); @out.truncate(0)
   end
 end
+# library and core extib end
 
+# test case and setup support start
 module Hipe::InterfaceReflectorTests
   class << self
     def color_off!
@@ -61,7 +64,7 @@ module Hipe::InterfaceReflectorTests
       suite
     end
   end
-  module TestCaseModuleMethods
+  module MyTestCase
     def self.extended mod
       mod.class_eval do
         include TestCaseInstanceMethods
@@ -74,6 +77,7 @@ module Hipe::InterfaceReflectorTests
       @program_name = nm
     end
     def prepare_app cls=@app_class, name=(@program_name || 'foo.rb')
+      cls.nil? and return nil
       app = cls.new
       app.program_name = name
       app.c = (ctx = app.build_context)
@@ -90,6 +94,7 @@ module Hipe::InterfaceReflectorTests
       self.class.app
     end
     def setup
+      app.nil? and return
       app.execution_context.clear_both!
       app.execution_context.clear
       app.instance_variable_set('@exit_ok', nil)
@@ -112,7 +117,7 @@ module Hipe::InterfaceReflectorTests
       if have == want
         assert_equal want, have
       else
-        $stderr.puts "want:#{'<'*20}\n#{linus(want)}DONEDONE"
+        $stderr.puts "want:#{'<'*20}\n#{linus(want)}80"
         $stderr.puts "have:#{'>'*20}\n#{linus(have)}DONEDONE\n\n"
         assert(false, 'Strings were not equal.')
       end
@@ -125,102 +130,7 @@ module Hipe::InterfaceReflectorTests
     end
   end
 end
-module Hipe::InterfaceReflectorTests
-  class NeverSee
-    extend ::Hipe::InterfaceReflector::SubcommandsCli
-
-    on :foo do |t|
-      t.desc 'get foobie and do doobie', 'doible foible'
-      t.request_parser do |o|
-        o.on '-n', '--dry-run', 'dry run'
-        o.on '-h', '--help', 'this screen'
-      end
-    end
-    def on_foo
-      @c.out.puts "running foo"
-      PP.pp(@c, @c.out)
-    end
-    on :"bar-baz" do |t|
-      t.request_parser do |o|
-        o.on '-n', '--noigle', 'poigle'
-      end
-    end
-    def on_bar_baz
-      @c.out.puts "running bar baz"
-      PP.pp(@c, @c.out)
-    end
-  end
-end
-
-module Hipe::InterfaceReflectorTests
-  class NeverSeeTests < Test::Unit::TestCase
-    extend TestCaseModuleMethods
-    app_class NeverSee
-    def test_nothing
-      assert_serr [], <<-S.unindent
-        expecting subcommand: foo or bar-baz
-        usage: foo.rb [-h [<subcommand>]] [ foo | bar-baz ] [opts] [args]
-        foo.rb -h for help
-      S
-    end
-    def test_wrong_something
-      assert_serr %w(xxx), <<-S.unindent
-        Invalid subcommand "xxx". expecting: foo or bar-baz.
-        usage: foo.rb [-h [<subcommand>]] [ foo | bar-baz ] [opts] [args]
-        foo.rb -h for help
-      S
-    end
-    def test_minus_h
-      assert_serr %w(-h), <<-S.unindent
-        usage: foo.rb [-h [<subcommand>]] [ foo | bar-baz ] [opts] [args]
-        options:
-            -h, --help [<subcommand>]        show this screen
-        subcommands:
-            foo                              get foobie and do doobie
-                                             doible foible
-            bar-baz
-      S
-    end
-    def test_minus_h_command
-      assert_serr %w(-h fo), <<-S.unindent
-        usage: foo.rb foo [-n] [-h]
-        description:
-        get foobie and do doobie
-        doible foible
-
-        options:
-            -n, --dry-run                    dry run
-            -h, --help                       this screen
-      S
-    end
-    def test_minus_h_with_bad_command
-      assert_serr %w(-h fiz), <<-S.unindent
-        Invalid subcommand "fiz". expecting: foo or bar-baz.
-        usage: foo.rb [-h [<subcommand>]] [ foo | bar-baz ] [opts] [args]
-        foo.rb -h for help
-      S
-    end
-    def test_command_minus_h
-      assert_serr %w(foo -h), <<-S.unindent
-        usage: foo.rb foo [-n] [-h]
-        description:
-        get foobie and do doobie
-        doible foible
-
-        options:
-            -n, --dry-run                    dry run
-            -h, --help                       this screen
-      S
-    end
-    def test_command_minus_m
-      assert_serr %w(foo -m), <<-S.unindent
-        invalid option: -m
-        usage: foo.rb foo [-n] [-h]
-        foo.rb -h for help
-      S
-    end
-  end
-end
+# test case and setup support end
 
 module Hipe::InterfaceReflectorTests
   class SimpleApp
@@ -245,11 +155,9 @@ module Hipe::InterfaceReflectorTests
     end
     def version_string; 'verzion123' end
   end
-end
 
-module Hipe::InterfaceReflectorTests
-  class SimpleTests < Test::Unit::TestCase
-    extend TestCaseModuleMethods
+  class SimpleAppTests < Test::Unit::TestCase
+    extend MyTestCase
     app_class SimpleApp
     program_name 'simp.rb'
     def test_nothing
@@ -371,11 +279,102 @@ module Hipe::InterfaceReflectorTests
       S
     end
   end
-end
 
-module Hipe::InterfaceReflectorTests
-  class SimpleTests < Test::Unit::TestCase
-    extend TestCaseModuleMethods
+  class SimpleSubcommandApp
+    extend ::Hipe::InterfaceReflector::SubcommandsCli
+
+    on :foo do |t|
+      t.desc 'get foobie and do doobie', 'doible foible'
+      t.request_parser do |o|
+        o.on '-n', '--dry-run', 'dry run'
+        o.on '-h', '--help', 'this screen'
+      end
+    end
+    def on_foo
+      @c.out.puts "running foo"
+      PP.pp(@c, @c.out)
+    end
+    on :"bar-baz" do |t|
+      t.request_parser do |o|
+        o.on '-n', '--noigle', 'poigle'
+      end
+    end
+    def on_bar_baz
+      @c.out.puts "running bar baz"
+      PP.pp(@c, @c.out)
+    end
+  end
+
+  class SimpleSubcommandAppTests < Test::Unit::TestCase
+    extend MyTestCase
+    app_class SimpleSubcommandApp
+    def test_nothing
+      assert_serr [], <<-S.unindent
+        expecting subcommand: foo or bar-baz
+        usage: foo.rb [-h [<subcommand>]] [ foo | bar-baz ] [opts] [args]
+        foo.rb -h for help
+      S
+    end
+    def test_wrong_something
+      assert_serr %w(xxx), <<-S.unindent
+        Invalid subcommand "xxx". expecting: foo or bar-baz.
+        usage: foo.rb [-h [<subcommand>]] [ foo | bar-baz ] [opts] [args]
+        foo.rb -h for help
+      S
+    end
+    def test_minus_h
+      assert_serr %w(-h), <<-S.unindent
+        usage: foo.rb [-h [<subcommand>]] [ foo | bar-baz ] [opts] [args]
+        options:
+            -h, --help [<subcommand>]        show this screen
+        subcommands:
+            foo                              get foobie and do doobie
+                                             doible foible
+            bar-baz
+      S
+    end
+    def test_minus_h_command
+      assert_serr %w(-h fo), <<-S.unindent
+        usage: foo.rb foo [-n] [-h]
+        description:
+        get foobie and do doobie
+        doible foible
+
+        options:
+            -n, --dry-run                    dry run
+            -h, --help                       this screen
+      S
+    end
+    def test_minus_h_with_bad_command
+      assert_serr %w(-h fiz), <<-S.unindent
+        Invalid subcommand "fiz". expecting: foo or bar-baz.
+        usage: foo.rb [-h [<subcommand>]] [ foo | bar-baz ] [opts] [args]
+        foo.rb -h for help
+      S
+    end
+    def test_command_minus_h
+      assert_serr %w(foo -h), <<-S.unindent
+        usage: foo.rb foo [-n] [-h]
+        description:
+        get foobie and do doobie
+        doible foible
+
+        options:
+            -n, --dry-run                    dry run
+            -h, --help                       this screen
+      S
+    end
+    def test_command_minus_m
+      assert_serr %w(foo -m), <<-S.unindent
+        invalid option: -m
+        usage: foo.rb foo [-n] [-h]
+        foo.rb -h for help
+      S
+    end
+  end
+
+  class TempliteTests < Test::Unit::TestCase
+    extend MyTestCase
     def test_templite
       require File.dirname(__FILE__) + '/templite'
       t = Hipe::InterfaceReflector::Templite.new('goofy:{doofy}:loofy')
