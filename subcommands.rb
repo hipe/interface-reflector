@@ -207,6 +207,7 @@ module Hipe::InterfaceReflector
       k = constantize name
       namespace_module.const_defined?(k) and fail("already have: #{k}")
       kls = Class.new(self) # make a subclass of whatever class this is
+      kls.parent = namespace_module
       kls.name = name
       class << kls; self end.send(:define_method, :inspect) do
         "#{namespace_module.inspect}::#{k}"
@@ -215,11 +216,32 @@ module Hipe::InterfaceReflector
       namespace_module.const_set(k, kls)
       kls
     end
+    def define_interface &block
+      # for now, you are a cli command iff your parent is a cli
+      if parent < CliInstanceMethods
+        extend SubcommandCliModuleMethods
+        include SubcommandCliInstanceMethods
+      end
+      if @interface_definition_block
+        fail("interface merging not supported!")
+      else
+        @interface_definition_block = block
+      end
+    end
     def execute &b
       @execution_block = b
     end
+    def parent= foo
+      respond_to?(:parent) and fail("parent cannot be set twice")
+      class << self ; self end.send(:define_method, :parent) { foo }
+      @has_parent = true
+      foo
+    end
+    attr_reader :has_parent
+    alias_method :parent?, :has_parent
     attr_reader :execution_block
-    def interface
+    def interface &b
+      block_given? and return define_interface(&b)
       @interface ||= begin
         if @interface_definition_block.nil?
           TheEmptyInterface
@@ -231,18 +253,7 @@ module Hipe::InterfaceReflector
       end
     end
     def intern; name end
-    def request_parser &block
-      # @fixme figure out an elegant way to determine that this is cli
-      extend SubcommandCliModuleMethods
-      include SubcommandCliInstanceMethods
-      if ! block_given?
-        interface
-      elsif @interface_definition_block
-        fail("interface merging not supported!")
-      else
-        @interface_definition_block = block
-      end
-    end
+    alias_method :request_parser, :interface # careful! experimental?
     attr_accessor :name
     def subcommand_documenting_instance; new end
     def subcommand_execution_instance;   new end
