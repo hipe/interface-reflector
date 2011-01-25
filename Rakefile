@@ -2,7 +2,7 @@ desc "genenerates coverage from tests"
 task :rcov do
   require 'open3'
   FileUtils.cd(File.dirname(__FILE__)) do
-    output = './coverage'
+    output = '../coverage'
     Open3.popen3(
       'rcov', '-x', '^/', '-x', '^test\.rb', '-T', '-o', output, './test.rb'
     ) do |sin, sout, serr|
