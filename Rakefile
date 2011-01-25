@@ -7,7 +7,7 @@ task :rcov do
       'rcov', '-x', '^/', '-o', output, './test.rb', '-t'
     ) do |sin, sout, serr|
       $stdout.puts sout.read
-      (s =  serr.read) == '' or $stderr.puts(s)
+      (s = serr.read) == '' or $stderr.puts(s)
     end
     $stdout.puts "wrote #{output}"
   end
