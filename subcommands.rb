@@ -110,6 +110,10 @@ module Hipe::InterfaceReflector
       end
       true # no parsing of opts, deferred
     end
+    def program_name
+      respond_to?(:parent) ? parent.program_name :
+        interface_reflector_program_name
+    end
     def render_desc o
       respond_to?(:desc_lines) or return # root node might not?
       if desc_lines.size > 1
