@@ -229,6 +229,8 @@ module Hipe::InterfaceReflector
       @c ||= build_context # when parent-child, parent might set e.c.
       instance_variable_defined?('@exit_ok') or @exit_ok = nil
       @queue = []
+      @usage_shown = false
+      @show_invite = true
       if ! (parse_opts and parse_args)
         on_parse_failure or return
       end
@@ -243,7 +245,8 @@ module Hipe::InterfaceReflector
     alias_method :execution_context, :c
     attr_writer :program_name
   protected
-    Styles = { :error => [:bold, :red], :em => [:bold, :green] }
+    Styles = { :error => [:bold, :red], :em => [:bold, :green],
+      :em_lite => [:green] } # can be built out later
     def style(s, style); color(s, *Styles[style]) end
     def em(s); style(s, :em) end
     def error msg
@@ -302,16 +305,18 @@ module Hipe::InterfaceReflector
     end
     alias_method :parse_args, :interface_reflector_parse_args
     def invite
-      em("#{program_name} -h") << " for help"
+      style("#{program_name} -h", :em_lite) << " for help"
     end
     def interface_reflector_on_help
       @c.err.puts documenting_option_parser.to_s
+      @usage_shown = true
+      @show_invite = false
       @exit_ok = true
     end
     alias_method :on_help, :interface_reflector_on_help
     def on_parse_failure
-      @c.err.puts usage
-      @c.err.puts invite
+      @usage_shown or (@usage_shown = true and @c.err.puts usage)
+      @show_invite == false or @c.err.puts(invite)
       false
     end
     def documenting_option_parser
