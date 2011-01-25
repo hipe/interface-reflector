@@ -16,13 +16,15 @@ class String
   end
 end
 class Hipe::InterfaceReflector::GenericContext < Hash
-  def flush_err
-    @err.rewind
-    s = @err.read
-    @err.rewind
-    @err.truncate(0)
+  def _flush it
+    it.rewind
+    s = it.read
+    it.rewind
+    it.truncate 0
     s
   end
+  def flush_err; _flush @err end
+  def flush_out; _flush @out end
 end
 
 module Hipe::InterfaceReflectorTests
@@ -69,6 +71,7 @@ module Hipe::InterfaceReflectorTests
       app.program_name = name
       app.c = (ctx = app.build_context)
       ctx.instance_variable_set('@err', StringIO.new)
+      ctx.instance_variable_set('@out', StringIO.new)
       app
     end
     def app
@@ -79,39 +82,6 @@ module Hipe::InterfaceReflectorTests
     def app
       self.class.app
     end
-  end
-end
-module Hipe::InterfaceReflectorTests
-  class NeverSee
-    extend ::Hipe::InterfaceReflector::SubcommandsCli
-
-    on :foo do |t|
-      t.desc 'get foobie and do doobie', 'doible foible'
-      t.option_parser do |o|
-        o.on '-n', '--dry-run', 'dry run'
-        o.on '-h', '--help', 'this screen'
-      end
-    end
-    def on_foo
-      @c.out.puts "running foo"
-      PP.pp(@c, @c.out)
-    end
-    on :"bar-baz" do |t|
-      t.option_parser do |o|
-        o.on '-n', '--noigle', 'poigle'
-      end
-    end
-    def on_bar_baz
-      @c.out.puts "running bar baz"
-      PP.pp(@c, @c.out)
-    end
-  end
-end
-
-module Hipe::InterfaceReflectorTests
-  class NeverSeeTests < Test::Unit::TestCase
-    extend TestCaseModuleMethods
-    app_class NeverSee
     def setup
       app.execution_context.clear
       app.instance_variable_set('@exit_ok', nil)
@@ -133,6 +103,39 @@ module Hipe::InterfaceReflectorTests
     def linus str
       str.gsub("\n", "XXX\n")
     end
+  end
+end
+module Hipe::InterfaceReflectorTests
+  class NeverSee
+    extend ::Hipe::InterfaceReflector::SubcommandsCli
+
+    on :foo do |t|
+      t.desc 'get foobie and do doobie', 'doible foible'
+      t.request_parser do |o|
+        o.on '-n', '--dry-run', 'dry run'
+        o.on '-h', '--help', 'this screen'
+      end
+    end
+    def on_foo
+      @c.out.puts "running foo"
+      PP.pp(@c, @c.out)
+    end
+    on :"bar-baz" do |t|
+      t.request_parser do |o|
+        o.on '-n', '--noigle', 'poigle'
+      end
+    end
+    def on_bar_baz
+      @c.out.puts "running bar baz"
+      PP.pp(@c, @c.out)
+    end
+  end
+end
+
+module Hipe::InterfaceReflectorTests
+  class NeverSeeTests < Test::Unit::TestCase
+    extend TestCaseModuleMethods
+    app_class NeverSee
     def test_nothing
       assert_serr [], <<-S.unindent
         expecting subcommand: foo or bar-baz
@@ -194,6 +197,39 @@ module Hipe::InterfaceReflectorTests
         invalid option: -m
         usage: foo.rb foo [-n] [-h]
         foo.rb -h for help
+      S
+    end
+  end
+end
+
+module Hipe::InterfaceReflectorTests
+  class SimpleApp
+    extend Hipe::InterfaceReflector
+    include Hipe::InterfaceReflector::CliInstanceMethods
+    def self.build_interface
+      Hipe::InterfaceReflector::RequestParser.new do |o|
+        o.on('-h', '--help', 'foobie doobie')
+        o.on('-d', '--dry-run', 'drizzle rizzle')
+        o.arg('<foo>', "it's foo")
+      end
+    end
+    def default_action; :go end
+    def go
+      @c.out.puts "Payload."
+    end
+  end
+end
+
+module Hipe::InterfaceReflectorTests
+  class SimpleTests < Test::Unit::TestCase
+    extend TestCaseModuleMethods
+    app_class SimpleApp
+    program_name 'simp.rb'
+    def test_nothing
+      assert_serr [], <<-S.unindent
+        expecting: <foo>
+        usage: simp.rb [-h] [-d] <foo>
+        simp.rb -h for help
       S
     end
   end
