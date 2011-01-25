@@ -1,68 +1,117 @@
 #!/usr/bin/env ruby
-puts "\e[5;35mruby-debug\e[0m"; require 'rubygems'; require 'ruby-debug'
+# puts "\e[5;35mruby-debug\e[0m"; require 'rubygems'; require 'ruby-debug'
 
 require 'test/unit/testcase'
+require 'test/unit/collector'
 require 'stringio'
 
 here = File.dirname(__FILE__)
 require here + '/interface-reflector'
 require here + '/subcommands'
 
-class NeverSee
-  extend ::Hipe::InterfaceReflector::SubcommandsCli
 
-  on :foo do |t|
-    t.desc 'get foobie and do doobie', 'doible foible'
-    t.option_parser do |o|
-      o.on '-n', '--dry-run', 'dry run'
-      o.on '-h', '--help', 'this screen'
-    end
-  end
-  def on_foo
-    @c.out.puts "running foo"
-    PP.pp(@c, @c.out)
-  end
-  on :"bar-baz" do |t|
-    t.option_parser do |o|
-      o.on '-n', '--noigle', 'poigle'
-    end
-  end
-  def on_bar_baz
-    @c.out.puts "running bar baz"
-    PP.pp(@c, @c.out)
-  end
-end
 class String
   def unindent
     (md = match(/\A( +)/)) ? gsub(/^#{md[1]}/, '') : self
   end
 end
+class Hipe::InterfaceReflector::GenericContext < Hash
+  def flush_err
+    @err.rewind
+    s = @err.read
+    @err.rewind
+    @err.truncate(0)
+    s
+  end
+end
+
 module Hipe::InterfaceReflectorTests
-  class Foobie < Test::Unit::TestCase
-    class << self
-      def color_off!
-        ::Hipe::InterfaceReflector::CliInstanceMethods.
-          send(:define_method, :color){ |a, *b| a }
-        @color_off = true
+  class << self
+    def color_off!
+      @color_off and return
+      ::Hipe::InterfaceReflector::CliInstanceMethods.
+        send(:define_method, :color){ |a, *b| a }
+      @color_off = true
+    end
+  end
+  class ModuleCollector
+    include ::Test::Unit::Collector
+    def initialize mod, name = mod.to_s
+      @filters = []
+      @name = name
+      @module = mod
+    end
+    def collect
+      suite = ::Test::Unit::TestSuite.new @name
+      ss = []
+      @module.constants.each do |mod|
+        ::Test::Unit::TestCase > (m = @module.const_get(mod)) and
+          add_suite(ss, m.suite)
       end
-      def app # just to be cute we do this stupid thing
-        @app ||= begin
-          @color_off or color_off!
-          a = NeverSee.new
-          a.program_name = 'foo.rb'
-          a.c = (ctx = a.build_context)
-          ctx.instance_variable_set('@err', StringIO.new)
-          def ctx.flush_err
-            @err.rewind
-            s = @err.read
-            @err.rewind
-            @err.truncate(0)
-            s
-          end
-          a
-        end
+      sort(ss).each { |s| suite << s }
+      suite
+    end
+  end
+  module TestCaseModuleMethods
+    def self.extended mod
+      mod.class_eval do
+        include TestCaseInstanceMethods
       end
     end
+    def app_class cls
+      @app_class = cls
+    end
+    def program_name nm
+      @program_name = nm
+    end
+    def prepare_app cls=@app_class, name=(@program_name || 'foo.rb')
+      app = cls.new
+      app.program_name = name
+      app.c = (ctx = app.build_context)
+      ctx.instance_variable_set('@err', StringIO.new)
+      app
+    end
+    def app
+      @app ||= prepare_app # this could be really stupid
+    end
+  end
+  module TestCaseInstanceMethods
+    def app
+      self.class.app
+    end
+  end
+end
+module Hipe::InterfaceReflectorTests
+  class NeverSee
+    extend ::Hipe::InterfaceReflector::SubcommandsCli
+
+    on :foo do |t|
+      t.desc 'get foobie and do doobie', 'doible foible'
+      t.option_parser do |o|
+        o.on '-n', '--dry-run', 'dry run'
+        o.on '-h', '--help', 'this screen'
+      end
+    end
+    def on_foo
+      @c.out.puts "running foo"
+      PP.pp(@c, @c.out)
+    end
+    on :"bar-baz" do |t|
+      t.option_parser do |o|
+        o.on '-n', '--noigle', 'poigle'
+      end
+    end
+    def on_bar_baz
+      @c.out.puts "running bar baz"
+      PP.pp(@c, @c.out)
+    end
+  end
+end
+
+module Hipe::InterfaceReflectorTests
+  class NeverSeeTests < Test::Unit::TestCase
+    extend TestCaseModuleMethods
+    app_class NeverSee
     def setup
       app.execution_context.clear
       app.instance_variable_set('@exit_ok', nil)
@@ -151,9 +200,11 @@ module Hipe::InterfaceReflectorTests
 end
 
 if __FILE__ == $PROGRAM_NAME || 'rcov' == File.basename($PROGRAM_NAME)
+  Hipe::InterfaceReflectorTests.color_off!
   require 'test/unit/ui/console/testrunner'
-  Test::Unit::UI::Console::TestRunner.new(
-    Hipe::InterfaceReflectorTests::Foobie,
-    Test::Unit::UI::VERBOSE
-  )
+  m = Hipe::InterfaceReflectorTests
+  suites = Hipe::InterfaceReflectorTests::ModuleCollector.new(
+    Hipe::InterfaceReflectorTests).collect
+  # SILENT PROGRESS_ONLY NORMAL VERBOSE
+  Test::Unit::UI::Console::TestRunner.run(suites, Test::Unit::UI::NORMAL)
 end
