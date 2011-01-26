@@ -468,16 +468,18 @@ module Hipe::InterfaceReflectorTests
       end
     end
     def test_interface_redefining
-      me = self
-      e = nil
-      Class.new.class_eval do
+      app = Class.new.class_eval do
         extend Hipe::InterfaceReflector::SubcommandsCli
         on(:blah) do |o|
           o.interface { }
-          e = me.assert_raises(::RuntimeError) { o.interface { } }
+          o.interface { }
         end
+        self
       end
-      assert_equal("interface merging not supported!", e.message)
+      e = assert_raises(::RuntimeError) do
+        app.new.find_subcommand('blah')
+      end
+      assert_match(/interface merging not supported!/, e.message)
     end
   end
   class TempliteTests < Test::Unit::TestCase
