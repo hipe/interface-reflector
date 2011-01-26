@@ -9,16 +9,23 @@ module Hipe::InterfaceReflector
   end
   module SubcommandModuleMethods
     include ::Hipe::InterfaceReflector::ModuleMethods
-    def add_subcommand_definition defn
-      @subcommands ||= []
-      @subcommands.push defn
-    end
     def on name, &b
-      add_subcommand_definition(
-        CommandDefinition.create_subclass(name, self, &b)
-      )
+      if @subcommands
+        @subcommands.push(CommandDefinition.create_subclass(name, self, &b))
+      else
+        @subcommand_blocks ||= []
+        @subcommand_blocks.push( proc {
+          CommandDefinition.create_subclass(name, self, &b)
+        } )
+      end
     end
-    attr_reader :subcommands
+    def subcommands
+      @subcommands and return @subcommands
+      @subcommand_blocks or return nil
+      @subcommands = @subcommand_blocks.map(&:call)
+      @subcommand_blocks = nil
+      @subcommands
+    end
   end
   module SubcommandCliModuleMethods
     include SubcommandModuleMethods
@@ -38,7 +45,7 @@ module Hipe::InterfaceReflector
       '[ ' << subs.map(&:name).join(' | ') << ' ] [opts] [args]'
     end
     def build_documenting_option_parser
-      subs = self.class.subcommands # used to be different
+      subs = subcommands
       subs.nil? and return interface_reflector_build_documenting_option_parser
       ophack = cli_option_parser.dup
       ophack.separator(em("subcommands:"))
