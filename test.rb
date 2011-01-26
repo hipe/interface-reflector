@@ -500,6 +500,68 @@ module Hipe::InterfaceReflectorTests
       assert_equal "can't parse pattern: \"{oh\"", e.message
     end
   end
+
+  require File.dirname(__FILE__) + '/tasks'
+  class TaskTests < Test::Unit::TestCase
+    extend MyTestCase
+    def test_crazy_cacheing
+      cls = Class.new.class_eval do
+        extend Hipe::InterfaceReflector::Tasks
+        task(:foo){ }
+        self
+      end
+      app = cls.new
+      assert_equal nil, cls.instance_variable_get('@subcommands')
+      cmds = app.subcommands
+      assert_kind_of Array, cls.instance_variable_get('@subcommands')
+      assert_equal 1, cmds.size
+      cls.task(:bar){ }
+      cls.on(:baz){ }
+      cmds = app.subcommands
+      assert_equal 3, cmds.size
+    end
+    def test_custom_class_not_custom_block
+      e = assert_raises(ArgumentError) do
+        Class.new.class_eval do
+          extend Hipe::InterfaceReflector::Tasks
+          task_class('blah'){ }
+        end
+      end
+      assert_match(/don't give class and block/i, e.message)
+    end
+    def test_custom_class
+      cust = Class.new.class_eval do
+        def self.create_subclass(*a, &b)
+          :blah
+        end
+        self
+      end
+      app = Class.new.class_eval do
+        extend Hipe::InterfaceReflector::Tasks
+        task_class cust
+        task(:foo){ }
+        self
+      end
+      t = app.new.subcommands.first
+      assert_equal :blah, t
+    end
+    def test_custom_class_block
+      cust = Class.new.class_eval do
+        def self.create_subclass(*a, &b)
+          :blah
+        end
+        self
+      end
+      app = Class.new.class_eval do
+        extend Hipe::InterfaceReflector::Tasks
+        task_class{ cust }
+        task(:foo){ }
+        self
+      end
+      t = app.new.subcommands.first
+      assert_equal :blah, t
+    end
+  end
 end
 
 if 'rcov' == File.basename($PROGRAM_NAME)
