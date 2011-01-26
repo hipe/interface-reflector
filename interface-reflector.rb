@@ -319,7 +319,8 @@ module Hipe::InterfaceReflector
       @c.err.puts documenting_option_parser.to_s
       @usage_shown = true
       @show_invite = false
-      @exit_ok = true
+      @argv.empty? and @exit_ok = true
+      true
     end
     alias_method :on_help, :interface_reflector_on_help
     def on_parse_failure
