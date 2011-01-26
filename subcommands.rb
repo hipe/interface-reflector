@@ -38,8 +38,7 @@ module Hipe::InterfaceReflector
       '[ ' << subs.map(&:name).join(' | ') << ' ] [opts] [args]'
     end
     def build_documenting_option_parser
-      subs = self.class.respond_to?(:subcommands) ?
-        self.class.subcommands : nil
+      subs = self.class.subcommands # used to be different
       subs.nil? and return interface_reflector_build_documenting_option_parser
       ophack = cli_option_parser.dup
       ophack.separator(em("subcommands:"))
@@ -60,11 +59,7 @@ module Hipe::InterfaceReflector
     end
     alias_method :execution_context=, :c=
     def find_subcommand attempt
-      subs = subcommands
-      if subs.nil?
-        return [nil, "#{color(subcommand_fully_qualified_name, :green)} "<<
-          "has no subcommands.  Does not respond to #{attempt.inspect}"]
-      end
+      subs = subcommands # used to be different
       found = subs.detect { |s| s.name == attempt }
       if subcommand_soft_match? && ! found
         re = %r{\A#{Regexp.escape(attempt)}}
@@ -100,8 +95,8 @@ module Hipe::InterfaceReflector
     def on_parse_failure
       # overrides 'parent', don't surreptitously display help (todo)
       @exit_ok and return false
-      @c.err.puts usage
-      @c.err.puts invite
+      @usage_shown or (@usage_shown = true and @c.err.puts usage)
+      @show_invite == false or @c.err.puts(invite)
       false
     end
     def parse_opts
@@ -116,12 +111,13 @@ module Hipe::InterfaceReflector
     end
     def render_desc o
       respond_to?(:desc_lines) or return # root node might not?
-      if desc_lines.size > 1
+      case desc_lines.size
+      when 0 ;
+      when 1 ; o.separator(em("description: ") << desc_lines.first)
+      else
         o.separator(em("description:"))
         desc_lines.each { |l| o.separator(l) }
         o.separator ''
-      else
-        o.separator(em("description: ") << desc_lines.first)
       end
     end
     def subcommands
@@ -216,6 +212,10 @@ module Hipe::InterfaceReflector
       namespace_module.const_set(k, kls)
       kls
     end
+    # experimental hack -- at this point we should be uses explicit classes?
+    def define name, &block
+      define_method(name, &block)
+    end
     def define_interface &block
       # for now, you are a cli command iff your parent is a cli
       if parent < CliInstanceMethods
@@ -242,9 +242,10 @@ module Hipe::InterfaceReflector
     attr_reader :execution_block
     def interface &b
       block_given? and return define_interface(&b)
-      @interface ||= begin
+      @interface and return @interface
+      @interface = begin
         if @interface_definition_block.nil?
-          TheEmptyInterface
+          ::Hipe::InterfaceReflector::RequestParser.new
         else
           b = @interface_definition_block;
           @interface_definition_block = nil
