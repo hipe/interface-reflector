@@ -282,7 +282,6 @@ module Hipe::InterfaceReflectorTests
 
   class SimpleSubcommandApp
     extend ::Hipe::InterfaceReflector::SubcommandsCli
-
     on :foo do |t|
       t.desc 'get foobie and do doobie', 'doible foible'
       t.request_parser do |o|
@@ -373,6 +372,114 @@ module Hipe::InterfaceReflectorTests
     end
   end
 
+  class EdgySubber
+    extend Hipe::InterfaceReflector::SubcommandsCli
+    on :foo do |o|
+      o.desc "in one line i am foo"
+      o.interface do |p|
+        p.on '-h', '--help', 'helf'
+        p.arg('arg1')
+        o.execute{ "i am foo" }
+      end
+    end
+    on :fap do |o|
+      o.desc "my name is {my_name}."
+      o.define(:my_name){ 'fap' }
+      o.interface do |p|
+      end
+    end
+    def on_fap; "i am fap" end
+  end
+
+  class EdgeCaseSubcommandTests < Test::Unit::TestCase
+    extend MyTestCase
+    app_class EdgySubber
+    program_name 'e-sub.rb'
+
+    # def test_build_documenting_option_parser_for_commmand_wo_subs
+    # end
+    # def test_has_no_subcommands
+    # end
+    def test_invalid_subcommand
+      app.run %w(zeta)
+      str = app.execution_context.flush_err
+      assert_match(/Invalid subcommand "zeta"\. +expecting: foo or fap/i, str)
+    end
+    def test_subcommand_help_ignores_other_options
+      app.run %w(-h foo -m)
+      str = app.execution_context.flush_err
+      assert_match(/ignoring: "-m"/, str)
+    end
+    def test_one_line_description
+      app.run(%w(-h foo))
+      str = app.execution_context.flush_err
+      assert_match(/^description: in one line i am foo$/, str)
+    end
+    def test_template_caching
+      cls = Class.new.class_eval do
+        extend Hipe::InterfaceReflector::SubcommandsCli
+        on(:blah) do |o|
+          o.desc "whaz:{whiz}"
+          o.define(:whiz){ 'whaz' }
+        end
+        self
+      end
+      cmd, _ = cls.new.find_subcommand('blah')
+      assert_equal "whaz:{whiz}", cmd.desc
+      c = cmd.new
+      assert_equal nil, c.instance_variable_get('@values')
+      assert_equal "whaz:whaz", c.desc
+      assert_kind_of Hash, (v = c.instance_variable_get('@values'))
+      assert_kind_of Hipe::InterfaceReflector::Templite, v[:desc]
+      assert_equal "whaz:whaz", c.desc
+      cmd.define(:whiz){'whut'}
+      assert_equal "whaz:whut", c.desc
+    end
+    def test_inspect_anonymous_command_class
+      app = EdgySubber.new
+      cmd, _ = app.find_subcommand('foo')
+      assert_equal(
+        'Hipe::InterfaceReflectorTests::EdgySubber::Foo', cmd.inspect)
+    end
+    def test_execution_setter
+      r = app.run %w(foo a1)
+      assert_equal "i am foo", r
+    end
+    def test_defined_method_for_subcommand_implementation
+      r = app.run %w(fap)
+      assert_equal "i am fap", r
+    end
+    def test_fuzzy_match
+      r = app.run %w(f)
+      s = app.execution_context.flush_err
+      assert_match(/Invalid subcommand "f"\. +did you mean foo or fap\?/i, s)
+    end
+    def test_interface_getting
+      me = self
+      Class.new.class_eval do
+        extend Hipe::InterfaceReflector::SubcommandsCli
+        on(:blah) do |o|
+          i = o.interface
+          me.assert_kind_of(Hipe::InterfaceReflector::RequestParser, i)
+          i2 = o.interface
+          me.assert_kind_of(Hipe::InterfaceReflector::RequestParser, i2)
+          me.assert_equal(i.object_id, i2.object_id)
+        end
+      end
+    end
+    def test_interface_redefining
+      me = self
+      e = nil
+      Class.new.class_eval do
+        extend Hipe::InterfaceReflector::SubcommandsCli
+        on(:blah) do |o|
+          o.interface { }
+          e = me.assert_raises(::RuntimeError) { o.interface { } }
+        end
+      end
+      assert_equal("interface merging not supported!", e.message)
+    end
+  end
   class TempliteTests < Test::Unit::TestCase
     extend MyTestCase
     def test_templite
