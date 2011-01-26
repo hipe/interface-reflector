@@ -236,7 +236,7 @@ module Hipe::InterfaceReflector
       end
     end
     def execute &b
-      @execution_block = b
+      define_method(:execute){ b.call(self) }
     end
     def parent= foo
       respond_to?(:parent) and fail("parent cannot be set twice")
@@ -283,11 +283,7 @@ module Hipe::InterfaceReflector
       end
     end
     def execute
-      if b = self.class.execution_block
-        b.call
-      else
-        parent.send as_method_name
-      end
+      parent.send as_method_name
     end
     def intern;                                         self.class.intern end
     def parent= p

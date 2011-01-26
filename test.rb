@@ -379,7 +379,7 @@ module Hipe::InterfaceReflectorTests
       o.interface do |p|
         p.on '-h', '--help', 'helf'
         p.arg('arg1')
-        o.execute{ "i am foo" }
+        o.execute{ |_| "i am foo" }
       end
     end
     on :fap do |o|
