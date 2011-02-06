@@ -228,6 +228,9 @@ module Hipe::InterfaceReflector
     def define name, &block
       define_method(name, &block)
     end
+    def set name, val
+      define_method(name){ return val }
+    end
     def define_interface &block
       # for now, you are a cli command iff your parent is a cli
       if parent < CliInstanceMethods
