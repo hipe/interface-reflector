@@ -26,6 +26,9 @@ module Hipe::InterfaceReflector
       @subcommand_blocks = nil
       @subcommands
     end
+    def subcommand sym
+      subcommands.detect { |s| s.intern == sym }
+    end
   end
   module SubcommandCliModuleMethods
     include SubcommandModuleMethods
@@ -129,6 +132,9 @@ module Hipe::InterfaceReflector
     end
     def subcommands
       self.class.respond_to?(:subcommands) ? self.class.subcommands : nil
+    end
+    def subcommand sym
+      self.class.respond_to?(:subcommand) ? self.class.subcommand(sym) : nil
     end
     def subcommand_fully_qualified_name
       if respond_to? :parent
@@ -288,7 +294,8 @@ module Hipe::InterfaceReflector
       end
     end
     def execute
-      parent.send as_method_name
+      args = parent.method(as_method_name).arity == 0 ? [] : [self]
+      parent.send(as_method_name, *args)
     end
     def intern;                                         self.class.intern end
     def parent= p
