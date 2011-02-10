@@ -201,6 +201,9 @@ module Hipe::InterfaceReflector
   module CommandDefinitionModuleMethods
     include DefStructModuleMethods
     include SubcommandCliModuleMethods
+    def command_class cls
+      ancestors.include?(cls) or throw(:command_class, cls)
+    end
     def constantize name
       # not isomorphic, just whatever you have to do to get it valid
       name.to_s.sub(/^[^a-z]/i, '').gsub(/[^a-z0-9_]/, '').
@@ -215,7 +218,9 @@ module Hipe::InterfaceReflector
       class << kls; self end.send(:define_method, :inspect) do
         "#{namespace_module.inspect}::#{k}"
       end
-      yield kls
+      if (use_kls = catch(:command_class){ yield(kls); nil }) # awful
+        return use_kls.create_subclass(name, namespace_module, &b)
+      end
       namespace_module.const_set(k, kls)
       kls
     end

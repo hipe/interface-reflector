@@ -36,5 +36,11 @@ module Hipe::InterfaceReflector
     end
   end
   class TaskDefinition < CommandDefinition
+    include SubcommandCliInstanceMethods
+    class << self
+      def task_class(*a)
+        return command_class(*a)
+      end
+    end
   end
 end
