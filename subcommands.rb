@@ -219,7 +219,7 @@ module Hipe::InterfaceReflector
         "#{namespace_module.inspect}::#{k}"
       end
       if (use_kls = catch(:command_class){ yield(kls); nil }) # awful
-        return use_kls.create_subclass(name, namespace_module, &b)
+        return use_kls.create_subclass(name_sym, namespace_module, &b)
       end
       namespace_module.const_set(k, kls)
       kls
