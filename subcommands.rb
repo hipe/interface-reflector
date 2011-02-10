@@ -206,12 +206,12 @@ module Hipe::InterfaceReflector
       name.to_s.sub(/^[^a-z]/i, '').gsub(/[^a-z0-9_]/, '').
         sub(/^([a-z])/){ $1.upcase }.intern
     end
-    def create_subclass name, namespace_module, &b
-      k = constantize name
+    def create_subclass name_sym, namespace_module, &b
+      k = constantize name_sym
       namespace_module.const_defined?(k) and fail("already have: #{k}")
       kls = Class.new(self) # make a subclass of whatever class this is
       kls.parent = namespace_module
-      kls.name = name
+      kls.name = name_sym.to_s
       class << kls; self end.send(:define_method, :inspect) do
         "#{namespace_module.inspect}::#{k}"
       end
@@ -260,7 +260,7 @@ module Hipe::InterfaceReflector
         end
       end
     end
-    def intern; name end
+    def intern; name.intern end
     alias_method :request_parser, :interface # careful! experimental?
     attr_accessor :name
     def subcommand_documenting_instance; new end
