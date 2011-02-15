@@ -26,6 +26,9 @@ module Hipe::InterfaceReflector
       @subcommand_blocks = nil
       @subcommands
     end
+    def subcommand sym
+      subcommands.detect { |s| s.intern == sym }
+    end
   end
   module SubcommandCliModuleMethods
     include SubcommandModuleMethods
@@ -130,6 +133,9 @@ module Hipe::InterfaceReflector
     def subcommands
       self.class.respond_to?(:subcommands) ? self.class.subcommands : nil
     end
+    def subcommand sym
+      self.class.respond_to?(:subcommand) ? self.class.subcommand(sym) : nil
+    end
     def subcommand_fully_qualified_name
       if respond_to? :parent
         "#{parent.subcommand_fully_qualified_name} #{cli_label}"
@@ -209,17 +215,17 @@ module Hipe::InterfaceReflector
       name.to_s.sub(/^[^a-z]/i, '').gsub(/[^a-z0-9_]/, '').
         sub(/^([a-z])/){ $1.upcase }.intern
     end
-    def create_subclass name, namespace_module, &b
-      k = constantize name
+    def create_subclass name_sym, namespace_module, &b
+      k = constantize name_sym
       namespace_module.const_defined?(k) and fail("already have: #{k}")
       kls = Class.new(self) # make a subclass of whatever class this is
       kls.parent = namespace_module
-      kls.name = name
+      kls.name = name_sym.to_s
       class << kls; self end.send(:define_method, :inspect) do
         "#{namespace_module.inspect}::#{k}"
       end
       if (use_kls = catch(:command_class){ yield(kls); nil }) # awful
-        return use_kls.create_subclass(name, namespace_module, &b)
+        return use_kls.create_subclass(name_sym, namespace_module, &b)
       end
       namespace_module.const_set(k, kls)
       kls
@@ -268,7 +274,7 @@ module Hipe::InterfaceReflector
         end
       end
     end
-    def intern; name end
+    def intern; name.intern end
     alias_method :request_parser, :interface # careful! experimental?
     attr_accessor :name
     def subcommand_documenting_instance; new end
@@ -291,7 +297,8 @@ module Hipe::InterfaceReflector
       end
     end
     def execute
-      parent.send as_method_name
+      args = parent.method(as_method_name).arity == 0 ? [] : [self]
+      parent.send(as_method_name, *args)
     end
     def intern;                                         self.class.intern end
     def parent= p
