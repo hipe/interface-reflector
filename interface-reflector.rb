@@ -84,6 +84,23 @@ module Hipe::InterfaceReflector
       yield( rp = RequestParser.new )
       @interface = rp
     end
+    def set name_sym, *a, &b
+      throw ArgumentError.new('no') unless 1==[(1 if a.any?), b].compact.size
+      ivar = "@#{name_sym}"
+      attr_writer name_sym
+      case a.size
+      when 0
+        class << self; self end.send(:define_method, name_sym, &b)
+      else
+        a.size == 1 and a = a.first
+        class << self; self end.send(:attr_accessor, name_sym)
+        instance_variable_set ivar, a
+      end
+      define_method(name_sym) do
+        instance_variable_defined?(ivar) ? instance_variable_get(ivar) :
+          self.class.send(name_sym)
+      end
+    end
   end
   class ParameterDefinitionSet < Array
     def initialize
