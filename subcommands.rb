@@ -10,7 +10,7 @@ module Hipe::InterfaceReflector
   module SubcommandModuleMethods
     include ::Hipe::InterfaceReflector::ModuleMethods
     def on name, &b
-      if @subcommands
+      if instance_variable_defined?('@subcommands')
         @subcommands.push(CommandDefinition.create_subclass(name, self, &b))
       else
         @subcommand_blocks ||= []
@@ -20,8 +20,8 @@ module Hipe::InterfaceReflector
       end
     end
     def subcommands
-      @subcommands and return @subcommands
-      @subcommand_blocks or return nil
+      instance_variable_defined?('@subcommands') and return @subcommands
+      instance_variable_defined?('@subcommand_blocks') or return nil
       @subcommands = @subcommand_blocks.map(&:call)
       @subcommand_blocks = nil
       @subcommands
@@ -221,9 +221,11 @@ module Hipe::InterfaceReflector
       kls = Class.new(self) # make a subclass of whatever class this is
       kls.parent = namespace_module
       kls.name = name_sym.to_s
-      class << kls; self end.send(:define_method, :inspect) do
+      singleton_class = class << kls; self end
+      singleton_class.send(:define_method, :inspect) do
         "#{namespace_module.inspect}::#{k}"
       end
+      singleton_class.send(:alias_method, :to_s, :inspect)
       if (use_kls = catch(:command_class){ yield(kls); nil }) # awful
         return use_kls.create_subclass(name_sym, namespace_module, &b)
       end
@@ -243,11 +245,14 @@ module Hipe::InterfaceReflector
         extend SubcommandCliModuleMethods
         include SubcommandCliInstanceMethods
       end
-      if @interface_definition_block
+      if instance_variable_defined?('@interface_definition_block')
         fail("interface merging not supported!")
       else
         @interface_definition_block = block
       end
+    end
+    def interface_defined? # be very careful
+      instance_variable_defined?('@interface_definition_block')
     end
     def execute &b
       define_method(:execute){ b.call(self) }
@@ -263,7 +268,7 @@ module Hipe::InterfaceReflector
     attr_reader :execution_block
     def interface &b
       block_given? and return define_interface(&b)
-      @interface and return @interface
+      instance_variable_defined?('@interface') and return @interface
       @interface = begin
         if @interface_definition_block.nil?
           ::Hipe::InterfaceReflector::RequestParser.new

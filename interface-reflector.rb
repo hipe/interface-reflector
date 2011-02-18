@@ -375,6 +375,7 @@ module Hipe::InterfaceReflector
       @exit_ok = true
     end
     def program_name
+      @program_name ||= nil # avoids -warning
       @program_name || File.basename($PROGRAM_NAME)
     end
     alias_method :interface_reflector_program_name, :program_name
