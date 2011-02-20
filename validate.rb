@@ -23,7 +23,7 @@ module Hipe::InterfaceReflector
   # / module and subclass Validator or otherwise provide your own
   # implementation for custom validation methods.  (A convention is for
   # validation methods to contain 'must' in them, but some do not for the sake
-  # of brevity, like "string_range")
+  # of brevity, like "string_length")
 
   # A validation method call must return true on success, false on failure.
   # On failure, the validation method will typically call
