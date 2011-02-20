@@ -8,7 +8,7 @@ module Hipe::InterfaceReflector
   # Totally standalone from the rest of this thing (except for templite), can
   # optionally integrate with a controller / app that is CLI or otherwise.
 
-  # The object that has this an an ancestor must response to 'request' and
+  # The object that has this as an ancestor must respond to 'request' and
   # 'response'.  The request must respond to [].  (No attempt at making
   # indifferent access with symbol vs. string-keys happens here.)
 
@@ -21,13 +21,13 @@ module Hipe::InterfaceReflector
   # The most common validations of the author are provided here.  To extend
   # with your own validations, override build_validator() in your host class
   # / module and subclass Validator or otherwise provide your own
-  # implementation for custom validation methods.  The convention is for
-  # validation methods to contain 'must' in them.
+  # implementation for custom validation methods.  (A convention is for
+  # validation methods to contain 'must' in them, but some do not for the sake
+  # of brevity, like "string_range")
 
   # A validation method call must return true on success, false on failure.
-  # On failure, the validation method should somehow report the failure with
-  # one or more (unformatted) message strings that get added to the response
-  # object of the host.
+  # On failure, the validation method will typically call
+  # add_error_message(..) on the response object.
 
   module Validate
     def build_validator
@@ -90,6 +90,18 @@ module Hipe::InterfaceReflector
         return invalid("{label} must be positive, had {value}.", a)
       end
       true
+    end
+    def string_length min, max, *a
+      val = request[a.first]
+      unless String === val
+        return invalid("Needed string, had {value} for {label}.", a)
+      end
+      bad = false
+      min and val.length < min and bad = true and invalid(
+        "{label} must be at least #{min} characters.", a)
+      max and val.length > max and bad = true and invalid(
+        "{label} cannot be longer than #{max} characters.", a)
+      not bad
     end
     # common validations end
     def invalid msg, a
