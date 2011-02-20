@@ -367,7 +367,7 @@ module Hipe::InterfaceReflectorTests
       assert_serr %w(foo -m), <<-S.unindent
         invalid option: -m
         usage: foo.rb foo [-n] [-h]
-        foo.rb -h for help
+        foo.rb foo -h for help
       S
     end
   end
