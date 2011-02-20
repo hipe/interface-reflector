@@ -21,9 +21,7 @@ module Hipe::InterfaceReflector
   # The most common validations of the author are provided here.  To extend
   # with your own validations, override build_validator() in your host class
   # / module and subclass Validator or otherwise provide your own
-  # implementation for custom validation methods.  (A convention is for
-  # validation methods to contain 'must' in them, but some do not for the sake
-  # of brevity, like "string_length")
+  # implementation for custom validation methods.
 
   # A validation method call must return true on success, false on failure.
   # On failure, the validation method will typically call
@@ -68,7 +66,9 @@ module Hipe::InterfaceReflector
         invalid "Needed number, had {value} for {label}.", a
       end
     end
+    alias_method :number,        :must_be_number
     alias_method :must_be_float, :must_be_number
+    alias_method :float,         :must_be_number
     def must_be_integer *a
       true == x = preamble(:must_be_integer, a) or return x
       must_be_number(*a) or return false
@@ -83,6 +83,7 @@ module Hipe::InterfaceReflector
         invalid "Needed integer, had {value} for {label}.", a
       end
     end
+    alias_method :integer, :must_be_integer
     def must_be_positive *a
       true == x = preamble(:must_be_positive, a) or return x
       must_be_number(*a) or return false
@@ -91,6 +92,7 @@ module Hipe::InterfaceReflector
       end
       true
     end
+    alias_method :positive, :must_be_positive
     def string_length min, max, *a
       val = request[a.first]
       unless String === val
