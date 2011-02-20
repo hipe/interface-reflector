@@ -59,12 +59,15 @@ module Hipe::InterfaceReflector
       ophack
     end
     def cli_label;                                  self.class.intern.to_s end
-    def default_action;                 @subcommand ? :dispatch : :execute end
+    def default_action
+      instance_variable_defined?('@subcommand_class') ? :dispatch : :execute
+    end
     def dispatch
-      child = @subcommand.subcommand_execution_instance
+      child = @subcommand_class.subcommand_execution_instance
       child.execution_context = @c
       child.parent = self
       child.invoked_with = @argv.shift
+      @subcommand_instance = child
       child.run @argv
     end
     alias_method :execution_context=, :c=
@@ -87,6 +90,9 @@ module Hipe::InterfaceReflector
         oxford_comma(subs.map{|c| color(c.name, :green)},' or ') << '.'
       ]
       return [found, nil]
+    end
+    def invite
+      style("#{subcommand_fully_qualified_name} -h", :em_lite) << " for help"
     end
     attr_accessor :invoked_with
     def on_help arg=nil
@@ -157,7 +163,7 @@ module Hipe::InterfaceReflector
       attempt = @argv.first
       found, msg = find_subcommand attempt
       found or return error(msg)
-      @subcommand = found
+      @subcommand_class = found
       true
     end
   end
