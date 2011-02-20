@@ -16,7 +16,16 @@ module Hipe::InterfaceReflector
     end
     attr_reader :out, :err
   end
+  module Lingual
+    extend self
+    def oxford_comma items, last_glue = ' and ', rest_glue = ', '
+      _ = items.zip( items.size < 2 ? [] :
+          ( [last_glue] + Array.new(items.size - 2, rest_glue) ).reverse
+      ); _.flatten.join    # ugly rcov refactor
+    end
+  end
   module InstanceMethods
+    include Lingual
     def build_cli_option_parser
       require 'optparse'
       ::OptionParser.new do |o|
@@ -68,11 +77,6 @@ module Hipe::InterfaceReflector
     # file utils convenince smell end
     def handle_failed_option param, value
       @options_ok = false
-    end
-    def oxford_comma items, last_glue = ' and ', rest_glue = ', '
-      _ = items.zip( items.size < 2 ? [] :
-          ( [last_glue] + Array.new(items.size - 2, rest_glue) ).reverse
-      ); _.flatten.join    # ugly rcov refactor
     end
   end
   module ModuleMethods

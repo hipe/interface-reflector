@@ -117,8 +117,8 @@ module Hipe::InterfaceReflectorTests
       if have == want
         assert_equal want, have
       else
-        $stderr.puts "want:#{'<'*20}\n#{linus(want)}80"
-        $stderr.puts "have:#{'>'*20}\n#{linus(have)}DONEDONE\n\n"
+        $stderr.puts "want:#{'<'*20}\n#{linus(want)}END1"
+        $stderr.puts "have:#{'>'*20}\n#{linus(have)}END2\n\n"
         assert(false, 'Strings were not equal.')
       end
     end
