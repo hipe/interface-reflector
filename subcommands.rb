@@ -29,6 +29,11 @@ module Hipe::InterfaceReflector
     def subcommand sym
       subcommands.detect { |s| s.intern == sym }
     end
+    def default_subcommand s=nil
+      s.nil? and return instance_variable_defined?('@default_subcommand') &&
+        @default_subcommand
+      @default_subcommand = s.to_s
+    end
   end
   module SubcommandCliModuleMethods
     include SubcommandModuleMethods
@@ -70,6 +75,7 @@ module Hipe::InterfaceReflector
       @subcommand_instance = child
       child.run @argv
     end
+    alias_method :subcommand_cli_dispatch, :dispatch # fuuu
     alias_method :execution_context=, :c=
     def find_subcommand attempt
       subs = subcommands # used to be different
@@ -158,9 +164,9 @@ module Hipe::InterfaceReflector
     end
     def parse_args
       (subs = subcommands) or return interface_reflector_parse_args
-      @argv.empty? and return error("expecting subcommand: " <<
-        oxford_comma(subs.map{ |c| color(c.name, :green)},' or '))
-      attempt = @argv.first
+      (attempt = @argv.any? ? @argv.first : self.class.default_subcommand) or
+        return error("expecting subcommand: " <<
+          oxford_comma(subs.map{ |c| color(c.name, :green)},' or '))
       found, msg = find_subcommand attempt
       found or return error(msg)
       @subcommand_class = found
@@ -276,7 +282,8 @@ module Hipe::InterfaceReflector
       block_given? and return define_interface(&b)
       instance_variable_defined?('@interface') and return @interface
       @interface = begin
-        if @interface_definition_block.nil?
+        if ! instance_variable_defined?('@interface_definition_block') ||
+          @interface_definition_block.nil?
           ::Hipe::InterfaceReflector::RequestParser.new
         else
           b = @interface_definition_block;
