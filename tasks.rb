@@ -135,11 +135,10 @@ module Hipe::InterfaceReflector
         if :default == name
           all_tasks.default_subcommand :default
         end
+        xx = all_tasks.next_desc
+        all_tasks.next_desc = nil
         all_tasks.task(name) do |o|
-          if all_tasks.next_desc
-            o.desc(*all_tasks.next_desc)
-            all_tasks.next_desc = nil
-          end
+          xx and o.desc(*xx)
           deps.any? and o.depends_on(*deps)
           if block
             if deps.any?
