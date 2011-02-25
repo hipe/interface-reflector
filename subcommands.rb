@@ -198,7 +198,7 @@ module Hipe::InterfaceReflector
           begin
             v = values.key?(name) ? values[name] : self.class.default(name)
             if v.kind_of?(String) && v.index('{')
-              (values[name] = Templite.new(v)).render(self)
+              (values[name] = Templite.new(v)).render(self, self.class)
             elsif v.kind_of?(Array) && [String] == v.map(&:class).uniq
               v.map { |x| x.index('{') ? Templite.new(x).render(self) : x }
             elsif v.kind_of?(Templite)

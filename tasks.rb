@@ -46,6 +46,9 @@ module Hipe::InterfaceReflector
         @depends_on ||= []
         a.any? ? @depends_on.concat(a) : @depends_on
       end
+      def describe_deps # for templates for descriptions
+        depends_on.map(&:inspect).join(', ')
+      end
     end
     # @todo this is in huge need of some testing out the wazoo
     def run_deps

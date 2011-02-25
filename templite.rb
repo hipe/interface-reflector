@@ -20,17 +20,17 @@ module Hipe::InterfaceReflector
         end
       end
     end
-    def render thing
-      @_thing = thing
+    def render *a
+      @_things = a
       @_out = ""
       @parts.each{ |x| @_out.concat render_value(*x) }
       s = @_out
-      @_out = @_thing = nil
+      @_out = @_things = nil
       s
     end
     def render_value name, *args
       respond_to?("do_#{name}") ? send("do_#{name}", *args) :
-        @_thing.send(name, *args)
+        @_things.detect{|t| t.respond_to?(name)}.send(name, *args)
     end
     def do_plain txt
       txt
