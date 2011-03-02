@@ -67,8 +67,22 @@ module Hipe::InterfaceReflector
         cmd.run @argv # meh!!!
       end
     end
-    def execute *a
-      run_deps
+    def execute
+      found_something_to_do = false
+      ret = nil
+      if self.class.depends_on.any?
+        found_something_to_do = true
+        run_deps
+      end
+      if parent.respond_to? as_method_name
+        found_something_to_do = true
+        ret = command_definition_execute
+      end
+      unless found_something_to_do
+        error("#{self.class.intern.inspect} has no dependencies " <<
+          "and #{as_method_name} was not defined in #{parent}")
+      end
+      ret
     end
   end
   module CommandDefinitionModuleMethods
