@@ -41,8 +41,10 @@ module Hipe::InterfaceReflector
       widths
       matrix.each do |row|
         out.puts(@cols.map do |c|
+          m = row[c.intern]
+          d = m.respond_to?(:cel_meta) ? m.cel_meta : c
           f = @widths[c.intern] - len(row[c.intern])
-          "#{c.fill * f if c.right?}#{row[c.intern]}#{c.fill * f if c.left?}"
+          "#{d.fill * f if d.right?}#{m.to_str}#{d.fill * f if d.left?}"
         end.join(@sep))
       end
       out
@@ -66,17 +68,41 @@ module Hipe::InterfaceReflector
       def left?;  @align == :left  end
       def right?; @align == :right end
       def render v
-        v.to_s
+        v.to_str
+      end
+    end
+    class Cel
+      def self.build h
+        new h
+      end
+      def initialize h
+        @h = h
+        @align = h[:align] || :left
+        @fill  = h[:fill]  || ' '
+      end
+      attr_reader :fill
+      def cel_meta; self end
+      def left?  ; @align == :left  end
+      def right? ; @align == :right end
+      def to_str
+        @h[:value].to_str
       end
     end
   protected
     def len mixed
-      mixed.index("\e") or return mixed.length;
-      mixed.gsub(/\e[^m]+m/, '').length
+      s = mixed.to_str
+      s.index("\e") or return s.length;
+      s.gsub(/\e[^m]+m/, '').length
     end
     def rendered_matrix
-      @rendered_matrix ||=
-        @rows.map { |r| @cols.map { |c| c.render(r[c.intern]) } }
+      @rendered_matrix ||= begin
+        @rows.map do |r|
+          @cols.map do |c|
+            v = r[c.intern]
+            v.kind_of?(Hash) ? Cel.build(v) : c.render(v)
+          end
+        end
+      end
     end
     def widths
       @widths ||= begin
