@@ -318,6 +318,7 @@ module Hipe::InterfaceReflector
       args = parent.method(as_method_name).arity == 0 ? [] : [self]
       parent.send(as_method_name, *args)
     end
+    alias_method :command_definition_execute, :execute
     def intern;                                         self.class.intern end
     def parent= p
       class << self ; self end.send(:define_method, :parent) { p }
