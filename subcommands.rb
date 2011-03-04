@@ -267,8 +267,15 @@ module Hipe::InterfaceReflector
       instance_variable_defined?('@interface_definition_block')
     end
     def execute &b
-      define_method(:execute){ b.call(self) }
+      @execute_defined = true
+      if b.arity > 0
+        define_method(:execute){ b.call(self) }
+      else
+        define_method(:execute, &b)
+      end
     end
+    attr_reader :execute_defined
+    alias_method :execute_defined?, :execute_defined
     def parent= foo
       respond_to?(:parent) and fail("parent cannot be set twice")
       class << self ; self end.send(:define_method, :parent) { foo }

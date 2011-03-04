@@ -79,8 +79,13 @@ module Hipe::InterfaceReflector
         ret = command_definition_execute
       end
       unless found_something_to_do
-        error("#{self.class.intern.inspect} has no dependencies " <<
-          "and #{as_method_name} was not defined in #{parent}")
+        msg = "#{self.class.name.inspect} has no dependencies to run " <<
+          "and cmd.execute{...} was not used to define an implementation"
+        unless parent.kind_of? Tasks::RakelikeRunner
+          msg << " and #{parent.class.name} did not define "<<
+            " #{self.as_method_name}()"
+        end
+        error msg<<'.'
       end
       ret
     end
@@ -89,7 +94,19 @@ module Hipe::InterfaceReflector
     def run_deps_then_execute &b
       define_method(:execute) do
         run_deps
-        b.call(self)
+        b.call(* (b.arity == 1 ? [self] : []))
+      end
+    end
+    def run_deps_then_instance_eval &b
+      define_method(:execute) do
+        run_deps
+        instance_eval(&b)
+      end
+    end
+    def run_deps_then_run_unbound unbound
+      define_method(:execute) do
+        run_deps
+        unbound.bind(self).call
       end
     end
   end
@@ -97,6 +114,12 @@ end
 # experimental below!!
 module Hipe::InterfaceReflector
   module Tasks
+    class RakelikeRunner
+      extend ::Hipe::InterfaceReflector::Tasks
+      class << self
+        attr_accessor :next_desc
+      end
+    end
     class << self
       attr_reader :rakelike
       alias_method :rakelike?, :rakelike
@@ -120,49 +143,61 @@ module Hipe::InterfaceReflector
         Kernel.send(:define_method, :task, &RakelikeTaskDefiner)
         Kernel.send(:define_method, :desc, &RakelikeDescDefiner)
       end
-      class RakelikeRunner
-        extend ::Hipe::InterfaceReflector::Tasks
-        class << self
-          attr_accessor :next_desc
-        end
-      end
       RakelikeDescDefiner = lambda do |*a|
         all_tasks = RakelikeGlobalTaskSpace
         all_tasks.next_desc ||= []
         all_tasks.next_desc.concat a
       end
+      module RakelikeHelper
+        extend self
+        def parse_names_and_deps mixed
+          if mixed.kind_of?(::Symbol)
+            name = mixed
+            deps = []
+          elsif mixed.kind_of?(::Hash) && mixed.length == 1
+            name = mixed.keys.first
+            deps = mixed[name];
+            deps.kind_of?(Array) or deps = [deps]
+          else
+            raise ArgumentError.new(
+              "task name must be of format :name or :name => :dep or "<<
+              ":name => [:dep1, :dep2 [..]], not #{mixed.inspect}")
+          end
+          [name, deps]
+        end
+      end
       RakelikeTaskDefiner = lambda do |mixed, &block|
         all_tasks = RakelikeGlobalTaskSpace
-        if mixed.kind_of?(::Symbol)
-          name = mixed
-          deps = []
-        elsif mixed.kind_of?(::Hash) && mixed.length == 1
-          name = mixed.keys.first
-          deps = mixed[name];
-          deps.kind_of?(Array) or deps = [deps]
-        else
-          raise ArgumentError.new(
-            "failsauce on task syntax: #{mixed.inspect}")
-        end
-        if block.nil? && deps.empty?
-          raise ArgumentError.new("No definition provided for "<<
-            " #{name.inspect}.  For now this means nothing.")
-          # all_tasks.subcommands and return all_tasks.subcommand(name)
-        end
-        if :default == name
-          all_tasks.default_subcommand :default
-        end
-        xx = all_tasks.next_desc
+        name, deps = RakelikeHelper.parse_names_and_deps(mixed)
+        block.nil? and deps.empty? and raise ArgumentError.new(
+          "No definition provided for #{name.inspect}.  "<<
+          "For now this means nothing."
+        )
+        :default == name and all_tasks.default_subcommand(:default)
+        next_desc = all_tasks.next_desc
         all_tasks.next_desc = nil
+        def_blk2 = exe_block = nil
+        if block
+          if 1 == block.arity
+            def_blk2 = block
+          else
+            exe_block = block
+          end
+        end
         all_tasks.task(name) do |o|
-          xx and o.desc(*xx)
+          def_blk2  and def_blk2.call(o)
+          next_desc and o.desc(* (next_desc + (o.desc.nil? ? [] :
+            (o.desc.kind_of?(Array) ? o.desc : [o.desc]))))
           deps.any? and o.depends_on(*deps)
-          if block
+          if exe_block
             if deps.any?
-              o.run_deps_then_execute(&block)
+              # o.run_deps_then_execute(&exe_block)
+              o.run_deps_then_instance_eval(&exe_block)
             else
-              o.execute(&block)
+              o.execute(&exe_block)
             end
+          elsif o.execute_defined? && deps.any?
+            o.run_deps_then_run_unbound(o.instance_method(:execute))
           end
         end
       end
