@@ -248,8 +248,11 @@ module Hipe::InterfaceReflector
     def define name, &block
       define_method(name, &block)
     end
+    # very experimental hack, allows quick and sloppy on the fly DSL'ing
     def set name, val
-      define_method(name){ return val }
+      attr_akksessor name
+      send name, val
+      self
     end
     def define_interface &block
       # for now, you are a cli command iff your parent is a cli
