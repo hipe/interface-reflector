@@ -43,6 +43,14 @@ module Hipe::InterfaceReflector
       GenericContext.new
     end
     def dispatch_option parameter, value
+      if parameter.block
+        case parameter.block.arity
+        when 1 ; args = [parameter.takes_argument? ? value : self]
+        when 2 ; args = [value , self]
+        else   ; args = []
+        end
+        false == parameter.block.call(*args) and return false
+      end
       handler = "on_#{parameter.intern}"
       if respond_to? handler
         args = parameter.takes_argument? ? [value] : []
@@ -153,6 +161,7 @@ module Hipe::InterfaceReflector
     attr_reader   :required
     alias_method  :required?, :required
     attr_accessor :desc
+    attr_accessor :block
   end
   class RequestParser
     # an adapter to make it look like an option parser, but it's more
@@ -161,8 +170,8 @@ module Hipe::InterfaceReflector
       yield self if block_given?
     end
     attr_reader :parameters
-    def on *a
-      @parameters.push UnparsedOptionDefinition.new(a)
+    def on *a, &b
+      @parameters.push UnparsedOptionDefinition.new(a, &b)
     end
     def arg *a
       @parameters.push UnparsedArgumentDefinition.new(a)
@@ -170,8 +179,9 @@ module Hipe::InterfaceReflector
   end
   class RequestParser
     class UnparsedParameterDefinition
-      def initialize(arr)
+      def initialize(arr, &b)
         @arr = arr
+        @block = b
       end
     end
     class UnparsedOptionDefinition < UnparsedParameterDefinition
@@ -187,6 +197,7 @@ module Hipe::InterfaceReflector
         md or fail("regexp match failure with #{found.inspect}")
         intern = md[2].gsub('-','_').intern
         Parameter.new(intern) do |p|
+          p.block = @block
           p.cli!; p.option!
           p.cli_syntax_label = @arr.first
           md[1].nil? or p.noable!
